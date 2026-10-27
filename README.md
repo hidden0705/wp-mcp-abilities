@@ -1,5 +1,11 @@
 # WP MCP Abilities
 
+[![CI](https://github.com/hidden0705/wp-mcp-abilities/actions/workflows/ci.yml/badge.svg)](https://github.com/hidden0705/wp-mcp-abilities/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/hidden0705/wp-mcp-abilities)](https://github.com/hidden0705/wp-mcp-abilities/releases)
+[![License: GPL-2.0-or-later](https://img.shields.io/badge/license-GPL--2.0--or--later-blue.svg)](LICENSE)
+[![WordPress 6.9+](https://img.shields.io/badge/WordPress-6.9%2B-21759b.svg)](https://wordpress.org/)
+[![PHP 8.0+](https://img.shields.io/badge/PHP-8.0%2B-8892bf.svg)](https://php.net/)
+
 Administrator-level MCP abilities for WordPress, built on the official
 [`mcp-adapter`](https://wordpress.org/plugins/mcp-adapter/) plugin.
 
