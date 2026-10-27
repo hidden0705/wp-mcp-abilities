@@ -87,7 +87,7 @@ wp wc tool run install_pages --user=1
 ```php
 add_action( 'ocean_after_header', function () {
     if ( is_front_page() ) {
-        echo '<div class="qadri-announce">Free shipping over Rs 999</div>';
+        echo '<div class="example-announce">Free shipping over $99</div>';
     }
 } );
 ```
@@ -136,7 +136,7 @@ If the behaviour must remain when the theme changes, it is plugin code.
 /* Template Name: Landing (no header) */
 get_header();
 ?>
-<main id="qadri-landing">
+<main id="example-landing">
     <?php while ( have_posts() ) : the_post(); the_content(); endwhile; ?>
 </main>
 <?php get_footer();

@@ -52,13 +52,18 @@ When adding or changing an ability:
 3. Use `$admin_gate` for the permission callback. Anything that writes must also check
    `wpmcp_is_readonly()`.
 4. Destructive actions require `confirm: true` and must keep a rollback copy.
-5. Describe the tool for an agent, not for a human reading a settings page: say when to
+5. Anything that fetches a caller-supplied URL must go through `wpmcp_check_url()` and
+   pass `reject_unsafe_urls` to `wp_remote_get()`. New shell or code-execution paths
+   must be opt-in constants, like `WPMCP_ENABLE_WPCLI`.
+6. Describe the tool for an agent, not for a human reading a settings page: say when to
    use it, what it returns, and what it refuses to do.
-6. Add a changelog entry.
+7. Add a changelog entry.
 
 ## Skills
 
-Playbooks live in `skills/*.md` with YAML front matter:
+Playbooks live in `skills/*.md` with YAML front matter. They are the read-only set
+shipped with the plugin; anything an agent writes at runtime goes to
+`wp-content/wpmcp-skills/` instead.
 
 ```markdown
 ---
@@ -78,6 +83,17 @@ summary: One sentence an agent can use to decide whether to load this file.
   `example.com`.
 - Site-specific observations belong in the site's own skill library, not in the
   bundled playbooks.
+- After adding, editing or deleting a bundled playbook, regenerate the checksum
+  manifest or the next upgrade will mistake your file for a site edit:
+
+  ```bash
+  python3 - <<'PY'
+  import hashlib, json, pathlib
+  m = {p.stem: hashlib.sha256(p.read_bytes()).hexdigest()
+       for p in sorted(pathlib.Path('skills').glob('*.md'))}
+  pathlib.Path('skills/manifest.json').write_text(json.dumps(m, indent=2, sort_keys=True) + "\n")
+  PY
+  ```
 
 ## Tests
 

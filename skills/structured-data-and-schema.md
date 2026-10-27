@@ -24,7 +24,7 @@ Multiple plugins emitting `Product` for the same URL is the most common defect.
 ## Verify what is live
 
 ```
-wpmcp/fetch-page { "url": "https://qadrimarket.com/product/cotton-kurta/" }
+wpmcp/fetch-page { "url": "https://example.com/product/cotton-kurta/" }
 ```
 
 Search the HTML for `application/ld+json`. Extract and validate each block. Tools: Google Rich Results Test, Schema Markup Validator.
@@ -33,7 +33,7 @@ Check for duplicates:
 
 ```
 wp eval '
-$html = file_get_contents( "https://qadrimarket.com/product/cotton-kurta/" );
+$html = file_get_contents( "https://example.com/product/cotton-kurta/" );
 preg_match_all( "/<script type=\"application\/ld\+json\">(.*?)<\/script>/s", $html, $m );
 echo count( $m[1] ) . " blocks\n";
 foreach ( $m[1] as $json ) { $d = json_decode( $json, true ); echo ( $d["@type"] ?? "?" ) . "\n"; }
@@ -49,13 +49,13 @@ foreach ( $m[1] as $json ) { $d = json_decode( $json, true ); echo ( $d["@type"]
   "@context": "https://schema.org",
   "@type": "Product",
   "name": "Cotton Kurta - Navy",
-  "image": ["https://qadrimarket.com/img/kurta.jpg"],
+  "image": ["https://example.com/img/kurta.jpg"],
   "description": "Handloom cotton kurta.",
   "sku": "QMK-NAVY-M",
-  "brand": { "@type": "Brand", "name": "Qadri Market" },
+  "brand": { "@type": "Brand", "name": "Example Store" },
   "offers": {
     "@type": "Offer",
-    "url": "https://qadrimarket.com/product/cotton-kurta/",
+    "url": "https://example.com/product/cotton-kurta/",
     "priceCurrency": "INR",
     "price": "1499.00",
     "availability": "https://schema.org/InStock",
@@ -78,8 +78,8 @@ Rules:
   "@context": "https://schema.org",
   "@type": "BreadcrumbList",
   "itemListElement": [
-    { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://qadrimarket.com/" },
-    { "@type": "ListItem", "position": 2, "name": "Kurtas", "item": "https://qadrimarket.com/product-category/kurtas/" },
+    { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://example.com/" },
+    { "@type": "ListItem", "position": 2, "name": "Kurtas", "item": "https://example.com/product-category/kurtas/" },
     { "@type": "ListItem", "position": 3, "name": "Cotton Kurta" }
   ]
 }

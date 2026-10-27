@@ -31,7 +31,7 @@ What that means in practice:
 
 | Ability | Worst case if the credential leaks |
 | --- | --- |
-| `wpmcp/wpcli` | Arbitrary shell commands through `wp eval` / `wp shell` |
+| `wpmcp/wpcli` (opt-in) | Arbitrary shell commands through `wp eval` / `wp shell` |
 | `wpmcp/files` | Write PHP under `wp-content`, including mu-plugins |
 | `wpmcp/rest-request` | Install and activate any plugin from WordPress.org |
 | `wpmcp/elementor` | Change any page layout; read all page content |
@@ -43,15 +43,21 @@ The correct mitigation is credential hygiene, not plugin-level sandboxing:
 1. Use a dedicated administrator account for MCP, not a personal one.
 2. Serve the site over HTTPS only.
 3. Restrict `/wp-json/mcp/*` by IP or edge authentication where possible.
-4. Use `WPMCP_READONLY` for agents that only need to inspect.
-5. Revoke the application password when a client is retired.
-6. Read `wpmcp_audit_log` after agent sessions.
+4. Leave `WPMCP_ENABLE_WPCLI` off unless an agent genuinely needs shell-level access.
+5. Use `WPMCP_READONLY` for agents that only need to inspect.
+6. Revoke the application password when a client is retired.
+7. Read `wpmcp_audit_log` after agent sessions.
 
 ## In scope
 
 - Authentication or capability bypass in an ability.
 - Path traversal or symlink escape in `wpmcp/files`, `wpmcp/restore`, or the backup
   directory.
+- An SSRF bypass in `wpmcp/fetch-page`, `wpmcp/media-import` or `wpmcp/audit-url`:
+  a public URL that redirects, resolves or rebinds into a private or reserved
+  address despite the guard.
+- A site playbook path that escapes `wp-content/wpmcp-skills/` or shadows an
+  ability it should not.
 - SQL injection, remote code execution or privilege escalation that does **not**
   require an administrator application password.
 - Exposure of secrets in the audit log, error messages or backups.
@@ -76,6 +82,8 @@ The correct mitigation is credential hygiene, not plugin-level sandboxing:
 - [ ] Application password scoped to that account; stored in a password manager.
 - [ ] `define( 'WPMCP_READONLY', true );` on production for inspection-only agents.
 - [ ] `wp-content/wpmcp-backups/` denied at the web server (Nginx snippet below).
+- [ ] `wp-content/wpmcp-skills/` denied at the web server (same rule).
+- [ ] `WPMCP_ENABLE_WPCLI` off unless the agent needs it.
 - [ ] `DISALLOW_FILE_EDIT` on; `WP_DEBUG_DISPLAY` off.
 - [ ] Regular off-site backups, tested restores.
 - [ ] Audit log reviewed after each agent session.
@@ -84,6 +92,11 @@ Nginx:
 
 ```nginx
 location ^~ /wp-content/wpmcp-backups/ {
+	deny all;
+	return 403;
+}
+
+location ^~ /wp-content/wpmcp-skills/ {
 	deny all;
 	return 403;
 }

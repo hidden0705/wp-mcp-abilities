@@ -33,7 +33,7 @@ wp option get woocommerce_email_base_color
 wp option get woocommerce_email_background_color
 ```
 
-`From` must be a domain address (`orders@qadrimarket.com`). A Gmail/Hotmail From address fails DMARC alignment and lands in spam.
+`From` must be a domain address (`orders@example.com`). A Gmail/Hotmail From address fails DMARC alignment and lands in spam.
 
 ## Templates
 

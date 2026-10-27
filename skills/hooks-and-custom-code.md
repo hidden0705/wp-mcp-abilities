@@ -18,18 +18,18 @@ Custom PHP belongs in exactly two places on this site: an **mu-plugin** (site-wi
 | One-off experiment | `wp-content/mu-plugins/` then remove or promote |
 | Plugin-like features with admin screens | a real plugin folder |
 
-mu-plugins load automatically, cannot be deactivated by accident, and are perfect for `add_filter` work. Keep them small and named: `mu-plugins/10-qadri-core.php`.
+mu-plugins load automatically, cannot be deactivated by accident, and are perfect for `add_filter` work. Keep them small and named: `mu-plugins/10-example-core.php`.
 
 ## Loader stub for mu-plugins
 
 ```php
 <?php
-// wp-content/mu-plugins/10-qadri-core.php
+// wp-content/mu-plugins/10-example-core.php
 if ( ! defined( 'ABSPATH' ) ) { exit; }
-require_once __DIR__ . '/qadri/loader.php';
+require_once __DIR__ . '/example/loader.php';
 ```
 
-Group related files under `mu-plugins/qadri/` and require them from one entry point — easier to audit and to disable as a unit.
+Group related files under `mu-plugins/example/` and require them from one entry point — easier to audit and to disable as a unit.
 
 ## The hook model
 
@@ -41,7 +41,7 @@ add_filter( 'the_title', function ( $title, $id ) {
 
 // Action: do something at a point in time.
 add_action( 'wp_footer', function () {
-    echo '<!-- built by qadri -->';
+    echo '<!-- built by example -->';
 } );
 
 // Remove a default behaviour.
@@ -70,7 +70,7 @@ add_filter( 'use_block_editor_for_post_type', function ( $use, $type ) {
 
 ```php
 add_filter( 'body_class', function ( $classes ) {
-    if ( is_product() ) { $classes[] = 'qadri-product'; }
+    if ( is_product() ) { $classes[] = 'example-product'; }
     return $classes;
 } );
 ```
@@ -79,7 +79,7 @@ add_filter( 'body_class', function ( $classes ) {
 
 ```php
 add_filter( 'woocommerce_product_single_add_to_cart_text', function () {
-    return __( 'Add to bag', 'qadri' );
+    return __( 'Add to bag', 'example' );
 } );
 ```
 
@@ -100,8 +100,8 @@ add_filter( 'query', function ( $query ) {
 - Escape output: `esc_html()`, `esc_attr()`, `esc_url()`, `wp_kses_post()`.
 - Sanitize input: `sanitize_text_field()`, `absint()`, `sanitize_email()`.
 - Check capability before writing: `current_user_can( 'manage_options' )`.
-- Verify nonces for form posts: `wp_verify_nonce( $_POST['_wpnonce'], 'qadri_action' )`.
-- Prefix everything: functions `qadri_`, options `qadri_`, hooks `qadri/`.
+- Verify nonces for form posts: `wp_verify_nonce( $_POST['_wpnonce'], 'example_action' )`.
+- Prefix everything: functions `example_`, options `example_`, hooks `example/`.
 - No `extract()`, no `eval()`, no `@` suppression in new code.
 
 ## Fatal-error containment
@@ -111,7 +111,7 @@ A syntax error in an mu-plugin takes the whole site down with no recovery mode. 
 1. Back up the file (or the whole `mu-plugins` folder).
 2. Run `php -l` locally if possible. On the server, `wpmcp/wpcli` can run:
    `eval 'echo "ok";'` — but it cannot lint a file directly. Use `shell_exec` through `eval` only if the host allows it, or write to a temp filename and test with `wp eval-file`.
-3. Keep the previous version at `mu-plugins/qadri/loader.php.bak` (not executable).
+3. Keep the previous version at `mu-plugins/example/loader.php.bak` (not executable).
 4. After writing, fetch the homepage; if it is 500, restore the `.bak` immediately.
 
 ## Child theme essentials

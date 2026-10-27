@@ -4,11 +4,11 @@ Tags: mcp, ai, wp-cli, elementor, woocommerce
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 8.0
-Stable tag: 2.4.0
+Stable tag: 2.5.0
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Administrator-level MCP abilities for WordPress: WP-CLI, REST, files with rollback, Elementor builder, site health, and 46 skill playbooks.
+Administrator-level MCP abilities for WordPress: REST, files with rollback, Elementor builder, site health, optional WP-CLI, and 46 skill playbooks.
 
 == Description ==
 
@@ -26,7 +26,8 @@ rollback copies, Elementor snapshots and an audit log.
 
 * **Agent context** – site profile, stack, ability catalog, skill index and warnings.
 * **REST request** – any WordPress or WooCommerce REST route as the current user.
-* **WP-CLI** – the real `wp` binary, pipelines allowed, 90 second timeout.
+* **WP-CLI** – the real `wp` binary, pipelines allowed, 90 second timeout. Off by
+default: enable it with `define( 'WPMCP_ENABLE_WPCLI', true );`.
 * **Files** – list, read, write, delete and search under `wp-content`, with backups.
 * **Elementor builder** – one super-ability with 16 actions instead of 200+ tools.
 * **Fetch page** – rendered HTML for verification after edits.
@@ -82,7 +83,14 @@ registers abilities on that server and, optionally, exposes them as direct tools
 
 = Does it work without WP-CLI? =
 
-Yes. Only `wpmcp/wpcli` needs the binary. The other abilities work normally.
+Yes. WP-CLI is opt-in: without `define( 'WPMCP_ENABLE_WPCLI', true );` the
+`wpmcp/wpcli` ability is not registered at all. The other abilities work normally.
+
+= Where do agent-written skills go? =
+
+`wp-content/wpmcp-skills/`, so a plugin update cannot delete them. A site playbook
+with the same slug as a bundled one shadows it. Files that older versions wrote into
+the plugin folder are migrated there once per version.
 
 = Where are the backups? =
 
@@ -107,6 +115,20 @@ None. The plugin has no admin screens; it is configured with constants and filte
 
 == Changelog ==
 
+= 2.5.0 =
+* Changed: `wpmcp/wpcli` is opt-in. Add `define( 'WPMCP_ENABLE_WPCLI', true );` to
+  `wp-config.php` to keep using WP-CLI. Without it the ability is not registered.
+* Changed: agent-written playbooks move to `wp-content/wpmcp-skills/`, so plugin
+  updates cannot delete them. Existing edits are migrated once per version.
+* Changed: Elementor cache invalidation is scoped to the edited post; only kit
+  globals flush the site-wide cache.
+* Added: SSRF guard on fetch-page, media-import and audit-url. Loopback, private,
+  link-local and reserved addresses are refused; the site's own host is allowed and
+  `wpmcp_allow_private_urls` opts out for local development.
+* Added: `media-import` enforces its 25 MB limit.
+* Added: `create-page` validates elements and wraps loose widgets in section > column.
+* Fixed: `wpmcp_el_merge` can now clear a list and ignores empty `_id` values.
+
 = 2.4.0 =
 * Added: `elementor/*` and `core/*` abilities as direct tools through the
   `wpmcp_extra_tool_namespaces` filter (42 tools on a site running Elementor's MCP
@@ -121,5 +143,7 @@ Internal releases, not publicly distributed.
 
 == Upgrade Notice ==
 
-= 2.4.0 =
-Adds Elementor and core abilities as direct tools. No configuration change required.
+= 2.5.0 =
+WP-CLI is now opt-in: add `define( 'WPMCP_ENABLE_WPCLI', true );` to wp-config.php
+before updating if agents rely on it. Agent-written skills move to wp-content and are
+migrated automatically.

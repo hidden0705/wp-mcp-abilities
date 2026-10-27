@@ -49,8 +49,8 @@ Files: archive `wp-content` plus `wp-config.php`. Exclude caches to keep the arc
 Always dry-run:
 
 ```
-wp search-replace "https://staging.example.com" "https://qadrimarket.com" --all-tables --dry-run
-wp search-replace "https://staging.example.com" "https://qadrimarket.com" --all-tables --skip-columns=guid
+wp search-replace "https://staging.example.com" "https://example.com" --all-tables --dry-run
+wp search-replace "https://staging.example.com" "https://example.com" --all-tables --skip-columns=guid
 ```
 
 Then:
@@ -58,8 +58,8 @@ Then:
 ```
 wp cache flush
 wp rewrite flush --hard
-wp option update siteurl "https://qadrimarket.com"
-wp option update home "https://qadrimarket.com"
+wp option update siteurl "https://example.com"
+wp option update home "https://example.com"
 wp litespeed-purge all
 ```
 

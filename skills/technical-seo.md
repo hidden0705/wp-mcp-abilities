@@ -26,8 +26,8 @@ Never write Yoast keys on a Rank Math site.
 
 ```
 wp eval '
-update_post_meta( 123, "_yoast_wpseo_title", "Cotton Kurta for Men | Qadri Market" );
-update_post_meta( 123, "_yoast_wpseo_metadesc", "Premium cotton kurtas for men. Free shipping over Rs 999. Sizes S-XXL." );
+update_post_meta( 123, "_yoast_wpseo_title", "Cotton Kurta for Men | Example Store" );
+update_post_meta( 123, "_yoast_wpseo_metadesc", "Premium cotton kurtas for men. Free shipping over $99. Sizes S-XXL." );
 echo "ok";
 '
 ```
@@ -60,7 +60,7 @@ Every indexable page needs one canonical. Common duplicates:
 Verify:
 
 ```
-wpmcp/fetch-page { "url": "https://qadrimarket.com/product/cotton-kurta/" }
+wpmcp/fetch-page { "url": "https://example.com/product/cotton-kurta/" }
 ```
 
 Grep the HTML for `rel="canonical"`. It must be absolute, https, and match the preferred host.
@@ -76,7 +76,7 @@ wp option get blog_public
 Check `robots.txt`:
 
 ```
-wpmcp/fetch-page { "url": "https://qadrimarket.com/robots.txt" }
+wpmcp/fetch-page { "url": "https://example.com/robots.txt" }
 ```
 
 It must not `Disallow: /`, and it should reference the sitemap.

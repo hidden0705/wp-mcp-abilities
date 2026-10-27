@@ -29,7 +29,7 @@ updated: 2026-10-26
 add_action( 'woocommerce_checkout_process', function () {
     $email = sanitize_email( $_POST['billing_email'] ?? '' );
     if ( ! $email ) { return; }
-    $key   = 'qadri_attempts_' . md5( $email . '|' . ( $_SERVER['REMOTE_ADDR'] ?? '' ) );
+    $key   = 'example_attempts_' . md5( $email . '|' . ( $_SERVER['REMOTE_ADDR'] ?? '' ) );
     $count = (int) get_transient( $key );
     if ( $count >= 5 ) {
         wc_add_notice( 'Too many attempts. Please try again later or contact us.', 'error' );

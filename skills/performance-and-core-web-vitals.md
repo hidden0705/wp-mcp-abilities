@@ -22,7 +22,7 @@ INP replaced FID in 2024. Lab scores (Lighthouse) approximate; ranking uses fiel
 - `wpmcp/audit-url` for mobile + desktop, homepage + a product page + checkout.
 - Search Console → Core Web Vitals for field data by URL group.
 - Query Monitor for PHP queries, hooks and slow plugins (temporary, remove after).
-- Server TTFB: `curl -o /dev/null -s -w '%{time_starttransfer}\n' https://qadrimarket.com/`
+- Server TTFB: `curl -o /dev/null -s -w '%{time_starttransfer}\n' https://example.com/`
 
 If TTFB > 800 ms, fix hosting/cache before touching images or JS.
 

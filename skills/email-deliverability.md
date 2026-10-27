@@ -56,9 +56,9 @@ Rules:
 Verify from the outside:
 
 ```
-dig +short TXT qadrimarket.com | grep -i spf
-dig +short TXT default._domainkey.qadrimarket.com
-dig +short TXT _dmarc.qadrimarket.com
+dig +short TXT example.com | grep -i spf
+dig +short TXT default._domainkey.example.com
+dig +short TXT _dmarc.example.com
 ```
 
 ## WordPress configuration
@@ -74,11 +74,11 @@ define( 'WPMS_SMTP_HOST', 'smtp.provider.com' );
 define( 'WPMS_SMTP_PORT', 587 );
 define( 'WPMS_SSL', 'tls' );
 define( 'WPMS_SMTP_AUTH', true );
-define( 'WPMS_SMTP_USER', 'user@qadrimarket.com' );
+define( 'WPMS_SMTP_USER', 'user@example.com' );
 define( 'WPMS_SMTP_PASS', '...' ); // store in wp-config, not in a plugin UI
 ```
 
-Set `From` to a domain address: `orders@qadrimarket.com`, `no-reply@qadrimarket.com`. Never `wordpress@localhost` or a free mailbox.
+Set `From` to a domain address: `orders@example.com`, `no-reply@example.com`. Never `wordpress@localhost` or a free mailbox.
 
 ## Transactional vs marketing
 

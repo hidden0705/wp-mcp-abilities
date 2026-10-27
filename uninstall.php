@@ -32,6 +32,7 @@ function wpmcp_uninstall_option_names() {
 	return array(
 		'wpmcp_audit_log',
 		'wpmcp_pagespeed_api_key',
+		'wpmcp_skills_migrated',
 	);
 }
 

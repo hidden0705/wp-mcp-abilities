@@ -115,7 +115,7 @@ Every plugin writes options. Audit after installing:
 wp option list --autoload=on --fields=option_name,size --format=json
 ```
 
-Naming convention for custom options: `qadri_<feature>_<setting>`, autoload `no` unless needed on every request.
+Naming convention for custom options: `example_<feature>_<setting>`, autoload `no` unless needed on every request.
 
 ## Multisite decision
 

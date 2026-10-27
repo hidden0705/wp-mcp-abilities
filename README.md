@@ -22,7 +22,7 @@ AI client  ──MCP over HTTPS──>  mcp-adapter  ──>  WP MCP Abilities  
 
 | Area | What you get |
 | --- | --- |
-| WP-CLI | The real `wp` binary as shell-level admin (pipes allowed), 90 s timeout |
+| WP-CLI | The real `wp` binary as shell-level admin (pipes allowed), 90 s timeout — **opt-in** |
 | REST | Any WordPress/WooCommerce REST route executed as the authenticated user |
 | Files | List/read/write/delete/search under `wp-content`, atomic writes, rollback copies |
 | Elementor | One safe super-ability with 16 actions (structure, widgets, templates, globals, snapshots) |
@@ -36,7 +36,7 @@ AI client  ──MCP over HTTPS──>  mcp-adapter  ──>  WP MCP Abilities  
 - PHP **8.0+**
 - [`mcp-adapter`](https://wordpress.org/plugins/mcp-adapter/) **0.7+**, active
 - HTTPS and an **Application Password** for an administrator account
-- WP-CLI is optional; `wpmcp/wpcli` reports a clear error when the binary is missing
+- WP-CLI is optional and **off by default**; enable it with `WPMCP_ENABLE_WPCLI`
 
 ## Installation
 
@@ -44,8 +44,10 @@ AI client  ──MCP over HTTPS──>  mcp-adapter  ──>  WP MCP Abilities  
 2. Upload `wp-mcp-abilities.zip` under **Plugins → Add New → Upload Plugin**, or copy
    the `wp-mcp-abilities/` folder to `wp-content/plugins/`.
 3. Activate **WP MCP Abilities**.
-4. Create an application password under **Users → Profile → Application Passwords**.
-5. Point your MCP client at:
+4. Optional: enable WP-CLI by adding `define( 'WPMCP_ENABLE_WPCLI', true );` to
+   `wp-config.php` (needed only for `wpmcp/wpcli`).
+5. Create an application password under **Users → Profile → Application Passwords**.
+6. Point your MCP client at:
 
 ```
 https://example.com/wp-json/mcp/mcp-adapter-default-server
@@ -81,14 +83,14 @@ printf '%s' 'admin:xxxx xxxx xxxx xxxx xxxx xxxx' | base64
 
 ## Tools
 
-All 14 abilities require `manage_options`. Names map to MCP tools by replacing `/`
-with `-`.
+All abilities require `manage_options`. Names map to MCP tools by replacing `/`
+with `-`. Thirteen are always registered; `wpmcp/wpcli` only when the site opts in.
 
 | Ability | MCP tool | Purpose | Writes |
 | --- | --- | --- | --- |
 | `wpmcp/agent-context` | `wpmcp-agent-context` | Site profile, stack, ability catalog, skill index, warnings. Start here. | — |
 | `wpmcp/rest-request` | `wpmcp-rest-request` | Any REST route, as the current user | yes |
-| `wpmcp/wpcli` | `wpmcp-wpcli` | WP-CLI through the real binary | yes |
+| `wpmcp/wpcli` | `wpmcp-wpcli` | WP-CLI through the real binary — **only when `WPMCP_ENABLE_WPCLI` is true** | yes |
 | `wpmcp/files` | `wpmcp-files` | `wp-content` file CRUD + search, with backups | yes |
 | `wpmcp/elementor` | `wpmcp-elementor` | Safe Elementor builder, 16 actions | yes |
 | `wpmcp/fetch-page` | `wpmcp-fetch-page` | Rendered HTML of any URL | — |
@@ -111,8 +113,9 @@ Instead of 200+ per-widget tools, `wpmcp/elementor` exposes 16 actions:
 `regenerate-css`, `snapshots`, `rollback`.
 
 Every write snapshots the previous `_elementor_data`, encodes with `wp_slash`,
-reads the layout back, deletes the post CSS and purges the page. A failed
-read-back restores the previous layout automatically.
+reads the layout back and invalidates only that post's CSS. A failed read-back
+restores the previous layout automatically. Kit globals are the exception: they
+affect every page, so `set-globals` flushes the whole Elementor cache.
 
 ### Third-party namespaces
 
@@ -148,8 +151,15 @@ wpmcp-get-skill       { "slug": "woocommerce-products" }
 wpmcp-fetch-page      { "url": "https://example.com/product/x/" }
 ```
 
-New playbooks can be written by the agent itself with `wpmcp/skill-write` and are
-available to every future client immediately.
+New playbooks can be written by the agent itself with `wpmcp/skill-write`. They land
+in `wp-content/wpmcp-skills/`, survive plugin updates, and are available to every
+future client immediately. A site playbook with the same slug as a bundled one
+shadows it, so an agent can override a shipped playbook without losing the original.
+`list-skills` reports `source` as `bundled` or `site`.
+
+An existing install that edited playbooks inside the plugin folder has them moved to
+`wp-content/wpmcp-skills/` once, on the first request after upgrading. The move uses
+`skills/manifest.json` checksums to tell a shipped file from an edited one.
 
 ## Safety model
 
@@ -159,6 +169,7 @@ available to every future client immediately.
 | Read-only mode | `WPMCP_READONLY` or the `wpmcp_readonly` filter disables every write path, including WP-CLI |
 | Confirm gates | Delete widget, set globals, rollback, file delete, restore/prune, skill delete require `confirm: true` |
 | Path guard | `wpmcp/files` cannot leave `wp-content`; `..` and symlink escapes are rejected |
+| URL guard | Fetching, media import and audits refuse loopback, private, link-local and reserved addresses; redirects are re-validated |
 | Backups | Every file write/delete and every Elementor write keeps a rollback copy |
 | Atomic writes | Temp file + `rename()`; Elementor writes are read back before success is reported |
 | Audit log | Last 200 `wpmcp/*` calls in a non-autoloaded option, secret-like keys redacted |
@@ -169,6 +180,9 @@ available to every future client immediately.
 | --- | --- | --- |
 | `WPMCP_READONLY` | `false` | Disable all writes |
 | `wpmcp_readonly` filter | constant value | Dynamic read-only switch |
+| `WPMCP_ENABLE_WPCLI` | `false` | Register the WP-CLI ability (shell-level access) |
+| `wpmcp_enable_wpcli` filter | constant value | Dynamic WP-CLI switch |
+| `wpmcp_allow_private_urls` filter | `false` | Allow fetching private/internal URLs (local development) |
 | `WPMCP_PAGESPEED_API_KEY` | empty | Google PageSpeed API key |
 | `wpmcp_pagespeed_api_key` filter | option value | Override the key at runtime |
 | `wpmcp_extra_tool_namespaces` filter | `['elementor/', 'core/']` | Extra ability namespaces on the server |
@@ -180,13 +194,20 @@ Read-only mode for a live site:
 define( 'WPMCP_READONLY', true );
 ```
 
+Enable WP-CLI on a site where the agent is expected to do real work:
+
+```php
+define( 'WPMCP_ENABLE_WPCLI', true );
+```
+
 ## Security warning
 
 This plugin is **administrator-level by design**. An application password for an
 administrator can already do almost anything through WordPress; this plugin makes
 that power explicit and scriptable:
 
-- `wpmcp/wpcli` runs the real `wp` binary through a shell. `wp eval` is PHP execution.
+- `wpmcp/wpcli`, when enabled, runs the real `wp` binary through a shell. `wp eval`
+  is PHP execution. It is off by default for exactly this reason.
 - `wpmcp/files` can write PHP files under `wp-content`.
 - `wpmcp/rest-request` can install and activate plugins.
 
@@ -209,7 +230,9 @@ This is not a sandbox and it is not malware-safe. Only connect clients you trust
 | 404 on the endpoint | `mcp-adapter` inactive, or permalinks need the `?rest_route=` form |
 | `tools/list` 403 behind a WAF | Response inspection on very large tool lists; reduce `wpmcp_extra_tool_namespaces` |
 | `proc_open is disabled` | Host disables it; use `wpmcp/rest-request` instead |
+| `wpmcp-wpcli` missing from `tools/list` | WP-CLI is opt-in: add `define( 'WPMCP_ENABLE_WPCLI', true );` |
 | `wp binary not found` | WP-CLI is not installed; the rest of the plugin still works |
+| `Refusing to fetch … private or reserved address` | SSRF guard; use the `wpmcp_allow_private_urls` filter only for local development |
 | PageSpeed returns 429 | No API key, shared anonymous quota; add `WPMCP_PAGESPEED_API_KEY` |
 | Elementor add-widget rejects `e-*` | Atomic elements are not enabled on that site; use classic widgets |
 

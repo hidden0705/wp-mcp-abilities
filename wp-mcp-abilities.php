@@ -3,7 +3,7 @@
  * Plugin Name:       WP MCP Abilities
  * Plugin URI:        https://github.com/hidden0705/wp-mcp-abilities
  * Description:       Administrator-level MCP abilities for WordPress: WP-CLI, REST, files with rollback, Elementor builder, site health, and 46 skill playbooks.
- * Version:           2.4.0
+ * Version:           2.5.0
  * Requires at least: 6.9
  * Requires PHP:      8.0
  * Requires Plugins:  mcp-adapter
@@ -29,7 +29,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-const WPMCP_VERSION = '2.4.0';
+const WPMCP_VERSION = '2.5.0';
 
 /**
  * The abilities this plugin registers, in tool-list order.
@@ -58,10 +58,102 @@ function wpmcp_ability_names() {
 	);
 }
 
-/** Directory containing the bundled skill markdown files. */
+/** Directory containing the bundled skill markdown files (shipped, read-only). */
 function wpmcp_skills_dir() {
 	return plugin_dir_path( __FILE__ ) . 'skills/';
 }
+
+/**
+ * Directory for playbooks the agent writes on this site.
+ *
+ * Kept out of the plugin folder on purpose: a plugin update replaces the folder,
+ * which used to delete every playbook an agent had learned. Files here shadow a
+ * bundled playbook with the same slug, so an agent can override a shipped
+ * playbook without losing the original.
+ *
+ * @param bool $create Create and protect the directory when it is missing.
+ * @return string Absolute path with a trailing slash.
+ */
+function wpmcp_user_skills_dir( $create = true ) {
+	$dir = WP_CONTENT_DIR . '/wpmcp-skills';
+	if ( $create && ! is_dir( $dir ) ) {
+		wp_mkdir_p( $dir );
+	}
+	if ( ! is_dir( $dir ) ) {
+		return $dir . '/';
+	}
+	if ( $create ) {
+		// Markdown is not executable, but the library can describe a site's
+		// internals; keep it out of directory listings and crawlers.
+		if ( ! file_exists( $dir . '/.htaccess' ) ) {
+			@file_put_contents( $dir . '/.htaccess', "<IfModule mod_authz_core.c>\n\tRequire all denied\n</IfModule>\n<IfModule !mod_authz_core.c>\n\tOrder deny,allow\n\tDeny from all\n</IfModule>\n" );
+		}
+		if ( ! file_exists( $dir . '/web.config' ) ) {
+			@file_put_contents( $dir . '/web.config', "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<configuration>\n\t<system.webServer>\n\t\t<security>\n\t\t\t<requestFiltering>\n\t\t\t\t<hiddenSegments>\n\t\t\t\t\t<add segment=\"wpmcp-skills\" />\n\t\t\t\t</hiddenSegments>\n\t\t\t</requestFiltering>\n\t\t</security>\n\t</system.webServer>\n</configuration>\n" );
+		}
+		if ( ! file_exists( $dir . '/index.php' ) ) {
+			@file_put_contents( $dir . '/index.php', "<?php\n// Silence is golden.\n" );
+		}
+	}
+	return $dir . '/';
+}
+
+/**
+ * Checksums of the playbooks shipped in this release.
+ *
+ * Used to tell a shipped file from one an agent edited in the plugin folder by
+ * older versions, so the edited copy can be moved to the site library before an
+ * update overwrites it.
+ *
+ * @return array<string,string> slug => sha256
+ */
+function wpmcp_skills_manifest() {
+	static $manifest = null;
+	if ( null !== $manifest ) {
+		return $manifest;
+	}
+	$manifest = array();
+	$file     = wpmcp_skills_dir() . 'manifest.json';
+	if ( is_file( $file ) ) {
+		$decoded = json_decode( (string) file_get_contents( $file ), true );
+		if ( is_array( $decoded ) ) {
+			$manifest = $decoded;
+		}
+	}
+	return $manifest;
+}
+
+/**
+ * Move playbooks written into the plugin folder by older versions to the site
+ * library, so a plugin update cannot delete them. Runs once per plugin version.
+ */
+function wpmcp_maybe_migrate_skills() {
+	if ( WPMCP_VERSION === (string) get_option( 'wpmcp_skills_migrated' ) ) {
+		return;
+	}
+	$manifest = wpmcp_skills_manifest();
+	$user_dir = wpmcp_user_skills_dir();
+	foreach ( (array) glob( wpmcp_skills_dir() . '*.md' ) as $file ) {
+		$slug = basename( $file, '.md' );
+		$hash = (string) hash_file( 'sha256', $file );
+		$known = isset( $manifest[ $slug ] ) ? (string) $manifest[ $slug ] : '';
+		if ( '' !== $known && hash_equals( $known, $hash ) ) {
+			continue; // Untouched shipped playbook.
+		}
+		$target = $user_dir . $slug . '.md';
+		if ( file_exists( $target ) ) {
+			continue; // The site library already wins for this slug.
+		}
+		@copy( $file, $target );
+	}
+	update_option( 'wpmcp_skills_migrated', WPMCP_VERSION, false );
+}
+add_action( 'init', 'wpmcp_maybe_migrate_skills' );
+
+/** Translations live in languages/; GitHub releases are not served by WordPress.org. */
+add_action( 'init', function () {
+	load_plugin_textdomain( 'wp-mcp-abilities', false, dirname( plugin_basename( __FILE__ ) ) . '/languages' );
+} );
 
 /**
  * Cheap local page audit, used when PageSpeed is unavailable.
@@ -75,7 +167,15 @@ function wpmcp_skills_dir() {
  */
 function wpmcp_local_audit( $url ) {
 	$start    = microtime( true );
-	$response = wp_remote_get( $url, array( 'timeout' => 25, 'redirection' => 5, 'user-agent' => 'Mozilla/5.0 (wp-mcp audit)' ) );
+	$response = wp_remote_get(
+		$url,
+		array(
+			'timeout'            => 25,
+			'redirection'        => 5,
+			'user-agent'         => 'Mozilla/5.0 (wp-mcp audit)',
+			'reject_unsafe_urls' => ! wpmcp_url_allows_private( $url ),
+		)
+	);
 	$elapsed  = (int) round( ( microtime( true ) - $start ) * 1000 );
 
 	if ( is_wp_error( $response ) ) {
@@ -150,6 +250,114 @@ function wpmcp_pagespeed_key() {
 }
 
 /**
+ * Whether the WP-CLI ability is available on this site.
+ *
+ * WP-CLI is shell-level administrator access: `wp eval` is PHP execution, so a
+ * leaked application password becomes remote code execution. It is opt-in for
+ * that reason. Enable it on sites where an agent is expected to do real work:
+ *
+ *   define( 'WPMCP_ENABLE_WPCLI', true );          // wp-config.php
+ *   add_filter( 'wpmcp_enable_wpcli', '__return_true' );
+ *
+ * When it is off the ability is not registered at all, so it does not appear in
+ * tools/list and an agent cannot call it by accident.
+ *
+ * @return bool
+ */
+function wpmcp_wpcli_enabled() {
+	$enabled = defined( 'WPMCP_ENABLE_WPCLI' ) ? (bool) WPMCP_ENABLE_WPCLI : false;
+	return (bool) apply_filters( 'wpmcp_enable_wpcli', $enabled );
+}
+
+/**
+ * Refuse URLs that point at the server's own private network.
+ *
+ * fetch-page, media-import and audit-url take a URL from the agent. Without a
+ * guard an agent (or a prompt injection) can read cloud metadata at
+ * 169.254.169.254, hit an internal admin panel on 127.0.0.1, or port-scan the
+ * private network from inside the web server. Redirects are covered by
+ * wp_remote_get( [ 'reject_unsafe_urls' => true ] ), which re-validates every
+ * hop; the check here produces a clear message before any request is made.
+ *
+ * The site's own host is always allowed: many hosts resolve their own domain to
+ * a private address behind a proxy, and fetching your own pages is the main use
+ * case. Local development can opt out entirely:
+ *
+ *   add_filter( 'wpmcp_allow_private_urls', '__return_true' );
+ *
+ * @param string $url Absolute http(s) URL.
+ * @return true|WP_Error
+ */
+function wpmcp_check_url( $url ) {
+	$url = trim( (string) $url );
+	if ( ! preg_match( '#^https?://#i', $url ) ) {
+		return new WP_Error( 'wpmcp_url_scheme', 'Only http(s) URLs are allowed.' );
+	}
+	$parts = wp_parse_url( $url );
+	if ( ! is_array( $parts ) || empty( $parts['host'] ) ) {
+		return new WP_Error( 'wpmcp_url_host', 'That URL has no host.' );
+	}
+	if ( wpmcp_url_allows_private( $url ) ) {
+		return true;
+	}
+
+	$host = strtolower( trim( (string) $parts['host'], '[]' ) );
+	$bare = ( false === strpos( $host, '.' ) && ! filter_var( $host, FILTER_VALIDATE_IP ) );
+	if ( 'localhost' === $host || '.local' === substr( $host, -6 ) || '.internal' === substr( $host, -9 ) || '.localhost' === substr( $host, -10 ) || $bare ) {
+		return new WP_Error( 'wpmcp_url_private_host', 'Refusing to fetch a private hostname (' . $host . '). Fetching your own site and public URLs works; internal URLs need the wpmcp_allow_private_urls filter.' );
+	}
+
+	$ips = array();
+	if ( filter_var( $host, FILTER_VALIDATE_IP ) ) {
+		$ips[] = $host;
+	} else {
+		$v4 = gethostbynamel( $host );
+		if ( is_array( $v4 ) ) {
+			$ips = $v4;
+		}
+		$v6 = @dns_get_record( $host, DNS_AAAA );
+		if ( is_array( $v6 ) ) {
+			foreach ( $v6 as $record ) {
+				if ( ! empty( $record['ipv6'] ) ) {
+					$ips[] = (string) $record['ipv6'];
+				}
+			}
+		}
+	}
+	if ( empty( $ips ) ) {
+		return new WP_Error( 'wpmcp_url_dns', 'Could not resolve ' . $host . '.' );
+	}
+	foreach ( $ips as $ip ) {
+		if ( ! filter_var( $ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE ) ) {
+			return new WP_Error( 'wpmcp_url_private_ip', 'Refusing to fetch ' . $host . ' because it resolves to a private or reserved address (' . $ip . '). Internal URLs need the wpmcp_allow_private_urls filter.' );
+		}
+	}
+	return true;
+}
+
+/**
+ * True when private addresses are deliberately allowed for this URL.
+ *
+ * @param string $url Absolute http(s) URL.
+ * @return bool
+ */
+function wpmcp_url_allows_private( $url ) {
+	if ( (bool) apply_filters( 'wpmcp_allow_private_urls', false, $url ) ) {
+		return true;
+	}
+	$host = strtolower( (string) wp_parse_url( $url, PHP_URL_HOST ) );
+	if ( '' === $host ) {
+		return false;
+	}
+	foreach ( array( home_url( '/' ), site_url( '/' ) ) as $own ) {
+		if ( strtolower( (string) wp_parse_url( $own, PHP_URL_HOST ) ) === $host ) {
+			return true;
+		}
+	}
+	return false;
+}
+
+/**
  * Parse one skill file.
  *
  * Supports optional front matter:
@@ -217,7 +425,32 @@ function wpmcp_parse_skill( $file ) {
 }
 
 /**
- * Load every bundled skill, keyed by slug.
+ * Absolute path of the playbook that wins for a slug, or '' when there is none.
+ *
+ * A site playbook shadows a bundled one with the same slug.
+ *
+ * @param string $slug Skill slug.
+ * @return string
+ */
+function wpmcp_skill_file( $slug ) {
+	$slug = (string) $slug;
+	if ( '' === $slug || ! preg_match( '/^[a-z0-9\-_]+$/i', $slug ) ) {
+		return '';
+	}
+	$user = wpmcp_user_skills_dir( false ) . $slug . '.md';
+	if ( is_file( $user ) ) {
+		return $user;
+	}
+	$bundled = wpmcp_skills_dir() . $slug . '.md';
+	return is_file( $bundled ) ? $bundled : '';
+}
+
+/**
+ * Load every skill, keyed by slug.
+ *
+ * The site library (wp-content/wpmcp-skills) is read after the bundled folder,
+ * so a site playbook wins when both use the same slug. Each entry carries a
+ * `source` of `bundled` or `site`.
  *
  * @return array<string,array>
  */
@@ -227,14 +460,20 @@ function wpmcp_all_skills() {
 		return $cache;
 	}
 	$cache = array();
-	$dir   = wpmcp_skills_dir();
-	if ( ! is_dir( $dir ) ) {
-		return $cache;
-	}
-	foreach ( (array) glob( $dir . '*.md' ) as $file ) {
-		$skill = wpmcp_parse_skill( $file );
-		unset( $skill['body'], $skill['bytes'] );
-		$cache[ $skill['slug'] ] = $skill;
+	$dirs  = array(
+		'bundled' => wpmcp_skills_dir(),
+		'site'    => wpmcp_user_skills_dir( false ),
+	);
+	foreach ( $dirs as $source => $dir ) {
+		if ( ! is_dir( $dir ) ) {
+			continue;
+		}
+		foreach ( (array) glob( $dir . '*.md' ) as $file ) {
+			$skill = wpmcp_parse_skill( $file );
+			unset( $skill['body'], $skill['bytes'] );
+			$skill['source'] = $source;
+			$cache[ $skill['slug'] ] = $skill;
+		}
 	}
 	ksort( $cache );
 	return $cache;
@@ -828,19 +1067,53 @@ function wpmcp_el_snapshots( $post_id = 0 ) {
 }
 
 /** Drop Elementor's generated CSS and tell LiteSpeed to drop the page. */
+/**
+ * Invalidate the cached CSS of one post and its page caches.
+ *
+ * Older versions called Elementor's site-wide clear_cache() after every widget
+ * edit: every page's CSS was thrown away and rebuilt on the next request. Now
+ * only the edited post's stylesheet is deleted and regenerated.
+ *
+ * @param int $post_id Post whose layout changed.
+ */
 function wpmcp_el_flush( $post_id ) {
+	$post_id = (int) $post_id;
+	$file    = WP_CONTENT_DIR . '/uploads/elementor/css/post-' . $post_id . '.css';
+	if ( is_file( $file ) ) {
+		@unlink( $file );
+	}
+	if ( wpmcp_el_active() && class_exists( '\Elementor\Core\Files\CSS\Post' ) ) {
+		try {
+			$css = \Elementor\Core\Files\CSS\Post::create( $post_id );
+			if ( method_exists( $css, 'delete' ) ) {
+				$css->delete();
+			}
+			if ( method_exists( $css, 'update' ) ) {
+				$css->update();
+			}
+		} catch ( \Throwable $e ) {
+			// The deleted file and the _elementor_css meta are enough; Elementor
+			// rebuilds the stylesheet on the next page view.
+		}
+	}
+	do_action( 'litespeed_purge_post', $post_id );
+}
+
+/**
+ * Site-wide Elementor cache flush.
+ *
+ * Only for changes that affect every page — the kit's global colors, fonts and
+ * typography. A per-post edit must not call this.
+ */
+function wpmcp_el_flush_all() {
 	if ( wpmcp_el_active() ) {
 		try {
 			\Elementor\Plugin::$instance->files_manager->clear_cache();
 		} catch ( \Throwable $e ) {
-			// Best effort: the _elementor_css meta delete is the fallback.
+			// Best effort; the kit's _elementor_css meta delete is the fallback.
 		}
 	}
-	$file = WP_CONTENT_DIR . '/uploads/elementor/css/post-' . (int) $post_id . '.css';
-	if ( is_file( $file ) ) {
-		@unlink( $file );
-	}
-	do_action( 'litespeed_purge_post', (int) $post_id );
+	do_action( 'litespeed_purge_all' );
 }
 
 /**
@@ -888,44 +1161,87 @@ function wpmcp_el_write( $post_id, $json, $tag = 'save' ) {
 	);
 }
 
-/** Deep merge for Elementor settings: lists merge by _id, other lists replace. */
+/**
+ * True when an array is a JSON-style list (keys 0..n-1 in order).
+ *
+ * `array_is_list()` needs PHP 8.1; the plugin supports 8.0.
+ *
+ * @param mixed $value Candidate.
+ * @return bool
+ */
+function wpmcp_is_list( $value ) {
+	if ( ! is_array( $value ) ) {
+		return false;
+	}
+	$expected = 0;
+	foreach ( $value as $key => $unused ) {
+		if ( $key !== $expected ) {
+			return false;
+		}
+		++$expected;
+	}
+	return true;
+}
+
+/**
+ * Deep merge for Elementor settings.
+ *
+ * - Lists of objects that all carry an `_id` merge by id: send only the item you
+ *   change and the rest of the list is preserved.
+ * - Any other list replaces the old one (a list of strings, a list without ids).
+ * - An explicit empty list clears a list; an empty object on a map is a no-op.
+ * - Maps merge key by key.
+ *
+ * Elementor kit settings such as `system_colors` are id-tagged lists, so a
+ * partial update must not drop the other entries; typography presets behave the
+ * same way. This function is what keeps those partial updates safe.
+ *
+ * @param mixed $old Current value.
+ * @param mixed $new Incoming value.
+ * @return mixed
+ */
 function wpmcp_el_merge( $old, $new ) {
 	if ( ! is_array( $old ) || ! is_array( $new ) ) {
 		return $new;
 	}
-	$list_new = array_keys( $new ) === range( 0, count( $new ) - 1 );
-	$list_old = array_keys( $old ) === range( 0, count( $old ) - 1 );
-	if ( $list_new ) {
-		if ( ! $list_old ) {
+	if ( array() === $new ) {
+		return wpmcp_is_list( $old ) ? array() : $old;
+	}
+	if ( ! wpmcp_is_list( $new ) ) {
+		$out = $old;
+		foreach ( $new as $key => $value ) {
+			$out[ $key ] = array_key_exists( $key, $old ) ? wpmcp_el_merge( $old[ $key ], $value ) : $value;
+		}
+		return $out;
+	}
+	if ( ! wpmcp_is_list( $old ) ) {
+		return $new;
+	}
+
+	// Id-tagged list? Every incoming item needs a non-empty _id to merge by id.
+	foreach ( $new as $item ) {
+		if ( ! is_array( $item ) || ! isset( $item['_id'] ) || '' === (string) $item['_id'] ) {
 			return $new;
 		}
-		$by_id = array();
-		foreach ( $new as $item ) {
-			if ( ! is_array( $item ) || ! isset( $item['_id'] ) ) {
-				return $new;
-			}
-		}
-		foreach ( $old as $i => $item ) {
-			if ( is_array( $item ) && isset( $item['_id'] ) ) {
-				$by_id[ (string) $item['_id'] ] = $i;
-			}
-		}
-		$merged = $old;
-		foreach ( $new as $item ) {
-			$id = (string) $item['_id'];
-			if ( isset( $by_id[ $id ] ) ) {
-				$merged[ $by_id[ $id ] ] = wpmcp_el_merge( $merged[ $by_id[ $id ] ], $item );
-			} else {
-				$merged[] = $item;
-			}
-		}
-		return array_values( $merged );
 	}
-	$out = $old;
-	foreach ( $new as $key => $value ) {
-		$out[ $key ] = array_key_exists( $key, $old ) ? wpmcp_el_merge( $old[ $key ], $value ) : $value;
+
+	$by_id = array();
+	foreach ( $old as $index => $item ) {
+		if ( is_array( $item ) && isset( $item['_id'] ) && '' !== (string) $item['_id'] ) {
+			$by_id[ (string) $item['_id'] ] = $index;
+		}
 	}
-	return $out;
+	$merged = $old;
+	foreach ( $new as $item ) {
+		$id = (string) $item['_id'];
+		if ( isset( $by_id[ $id ] ) ) {
+			$merged[ $by_id[ $id ] ] = wpmcp_el_merge( $merged[ $by_id[ $id ] ], $item );
+			continue;
+		}
+		$merged[]     = $item;
+		$by_id[ $id ] = array_key_last( $merged );
+	}
+	return array_values( $merged );
 }
 
 /**
@@ -1127,122 +1443,125 @@ add_action( 'wp_abilities_api_init', function () {
 	// ---------------------------------------------------------------------
 	// 2. WP-CLI runner.
 	// ---------------------------------------------------------------------
-	wp_register_ability( 'wpmcp/wpcli', array(
-		'label'        => 'WP-CLI Command (admin)',
-		'description'  => 'Run a WP-CLI command through the wp binary as shell-level admin. Examples: "plugin list --format=json", "plugin update --all --yes", "cache flush", "db query \\"SELECT ID FROM wp_posts LIMIT 5\\" --format=json", "search-replace old new --all-tables --dry-run", "media import https://example.com/a.jpg", "eval \'echo json_encode(get_option(\\"blogname\\"));\'". The string is handed to a shell (so pipes work); newlines are stripped. 90-second timeout, last ~20 KB of each stream. Use wpmcp/rest-request when proc_open is unavailable.',
-		'category'     => 'wpmcp',
-		'input_schema' => array(
-			'type'       => 'object',
-			'properties' => array(
-				'command' => array(
-					'type'        => 'string',
-					'description' => 'WP-CLI command without the "wp" prefix. No pipes or redirects.',
+	// WP-CLI is opt-in: shell-level access, so it is absent unless the site asks for it.
+	if ( wpmcp_wpcli_enabled() ) {
+		wp_register_ability( 'wpmcp/wpcli', array(
+			'label'        => 'WP-CLI Command (admin)',
+			'description'  => 'Run a WP-CLI command through the wp binary as shell-level admin. Only available when the site opts in with define( \'WPMCP_ENABLE_WPCLI\', true ) in wp-config.php; without it this tool is not registered. Examples: "plugin list --format=json", "plugin update --all --yes", "cache flush", "db query \\"SELECT ID FROM wp_posts LIMIT 5\\" --format=json", "search-replace old new --all-tables --dry-run", "media import https://example.com/a.jpg", "eval \'echo json_encode(get_option(\\"blogname\\"));\'". The string is handed to a shell, so pipes work; newlines are stripped. 90-second timeout, last ~20 KB of each stream. Use wpmcp/rest-request when proc_open is unavailable.',
+			'category'     => 'wpmcp',
+			'input_schema' => array(
+				'type'       => 'object',
+				'properties' => array(
+					'command' => array(
+						'type'        => 'string',
+						'description' => 'WP-CLI command without the "wp" prefix. Runs through a shell, so pipes and redirects work.',
+					),
+					'confirm' => array(
+						'type'        => 'boolean',
+						'description' => 'Must be true for destructive commands (db drop/reset/delete/import, site empty, */delete).',
+					),
 				),
-				'confirm' => array(
-					'type'        => 'boolean',
-					'description' => 'Must be true for destructive commands (db drop/reset/delete/import, site empty, */delete).',
+				'required'   => array( 'command' ),
+			),
+			'output_schema' => array(
+				'type'       => 'object',
+				'properties' => array(
+					'success'   => array( 'type' => 'boolean' ),
+					'exit_code' => array( 'type' => 'integer' ),
+					'stdout'    => array( 'type' => 'string' ),
+					'stderr'    => array( 'type' => 'string' ),
 				),
 			),
-			'required'   => array( 'command' ),
-		),
-		'output_schema' => array(
-			'type'       => 'object',
-			'properties' => array(
-				'success'   => array( 'type' => 'boolean' ),
-				'exit_code' => array( 'type' => 'integer' ),
-				'stdout'    => array( 'type' => 'string' ),
-				'stderr'    => array( 'type' => 'string' ),
-			),
-		),
-		'execute_callback' => function ( $input ) {
-			if ( wpmcp_is_readonly() ) {
-				return array( 'success' => false, 'exit_code' => -1, 'stdout' => '', 'stderr' => 'Read-only mode is on (WPMCP_READONLY): WP-CLI is disabled because any command can write. Use wpmcp/rest-request GET or wpmcp/files read.' );
-			}
-			$raw_command = (string) ( $input['command'] ?? '' );
-			if ( preg_match( '/\b(db\s+(drop|reset|delete|import)|site\s+empty|(post|user|comment|plugin|theme|option|transient|media)\s+delete)\b/i', $raw_command ) && empty( $input['confirm'] ) ) {
-				return array( 'success' => false, 'exit_code' => -1, 'stdout' => '', 'stderr' => 'Destructive WP-CLI command. Repeat with "confirm": true if that is intended.' );
-			}
-			// Runs through a shell by design so pipelines work. Newlines and NUL bytes are
-			// stripped only to keep the call single-line; this is not a sandbox.
-			$cmdline = trim( str_replace( array( "\0", "\r", "\n" ), ' ', $raw_command ) );
-			if ( '' === $cmdline ) {
-				return array( 'success' => false, 'exit_code' => -1, 'stdout' => '', 'stderr' => 'Empty command.' );
-			}
-			if ( ! function_exists( 'proc_open' ) ) {
-				return array( 'success' => false, 'exit_code' => -1, 'stdout' => '', 'stderr' => 'proc_open is disabled on this host; use wpmcp/rest-request instead.' );
-			}
-			$wp_binary = '';
-			foreach ( array( '/usr/local/bin/wp', '/usr/bin/wp', '/usr/local/bin/wp-cli.phar', '/usr/bin/wp-cli.phar' ) as $candidate ) {
-				if ( is_executable( $candidate ) ) {
-					$wp_binary = $candidate;
-					break;
+			'execute_callback' => function ( $input ) {
+				if ( wpmcp_is_readonly() ) {
+					return array( 'success' => false, 'exit_code' => -1, 'stdout' => '', 'stderr' => 'Read-only mode is on (WPMCP_READONLY): WP-CLI is disabled because any command can write. Use wpmcp/rest-request GET or wpmcp/files read.' );
 				}
-			}
-			if ( '' === $wp_binary ) {
-				$found = shell_exec( 'command -v wp 2>/dev/null' );
-				if ( is_string( $found ) && '' !== trim( $found ) ) {
-					$wp_binary = trim( $found );
+				$raw_command = (string) ( $input['command'] ?? '' );
+				if ( preg_match( '/\b(db\s+(drop|reset|delete|import)|site\s+empty|(post|user|comment|plugin|theme|option|transient|media)\s+delete)\b/i', $raw_command ) && empty( $input['confirm'] ) ) {
+					return array( 'success' => false, 'exit_code' => -1, 'stdout' => '', 'stderr' => 'Destructive WP-CLI command. Repeat with "confirm": true if that is intended.' );
 				}
-			}
-			if ( '' === $wp_binary ) {
-				return array( 'success' => false, 'exit_code' => -1, 'stdout' => '', 'stderr' => 'wp binary not found; use wpmcp/rest-request instead.' );
-			}
-			$full_command = 'timeout 90 ' . escapeshellarg( $wp_binary ) . ' --path=' . escapeshellarg( ABSPATH ) . ' ' . $cmdline;
-			$descriptors  = array( 0 => array( 'pipe', 'r' ), 1 => array( 'pipe', 'w' ), 2 => array( 'pipe', 'w' ) );
-			$process      = proc_open( $full_command, $descriptors, $pipes, ABSPATH );
-			if ( ! is_resource( $process ) ) {
-				return array( 'success' => false, 'exit_code' => -1, 'stdout' => '', 'stderr' => 'proc_open failed to start the wp process.' );
-			}
-			fclose( $pipes[0] );
-			stream_set_blocking( $pipes[1], false );
-			stream_set_blocking( $pipes[2], false );
-			$stdout    = '';
-			$stderr    = '';
-			$exit_code = null;
-			$start     = time();
-			while ( true ) {
-				$read   = array( $pipes[1], $pipes[2] );
-				$write  = null;
-				$except = null;
-				$ready  = @stream_select( $read, $write, $except, 2 );
-				if ( false === $ready ) {
-					break;
+				// Runs through a shell by design so pipelines work. Newlines and NUL bytes are
+				// stripped only to keep the call single-line; this is not a sandbox.
+				$cmdline = trim( str_replace( array( "\0", "\r", "\n" ), ' ', $raw_command ) );
+				if ( '' === $cmdline ) {
+					return array( 'success' => false, 'exit_code' => -1, 'stdout' => '', 'stderr' => 'Empty command.' );
 				}
-				if ( $ready > 0 ) {
-					if ( in_array( $pipes[1], $read, true ) ) {
-						$stdout .= (string) stream_get_contents( $pipes[1] );
-					}
-					if ( in_array( $pipes[2], $read, true ) ) {
-						$stderr .= (string) stream_get_contents( $pipes[2] );
+				if ( ! function_exists( 'proc_open' ) ) {
+					return array( 'success' => false, 'exit_code' => -1, 'stdout' => '', 'stderr' => 'proc_open is disabled on this host; use wpmcp/rest-request instead.' );
+				}
+				$wp_binary = '';
+				foreach ( array( '/usr/local/bin/wp', '/usr/bin/wp', '/usr/local/bin/wp-cli.phar', '/usr/bin/wp-cli.phar' ) as $candidate ) {
+					if ( is_executable( $candidate ) ) {
+						$wp_binary = $candidate;
+						break;
 					}
 				}
-				$status = proc_get_status( $process );
-				if ( ! $status['running'] ) {
-					$exit_code = (int) $status['exitcode'];
-					break;
+				if ( '' === $wp_binary ) {
+					$found = shell_exec( 'command -v wp 2>/dev/null' );
+					if ( is_string( $found ) && '' !== trim( $found ) ) {
+						$wp_binary = trim( $found );
+					}
 				}
-				if ( ( time() - $start ) > 95 ) {
-					$stderr .= "\n[wpmcp] killed after 95s";
-					proc_terminate( $process );
-					break;
+				if ( '' === $wp_binary ) {
+					return array( 'success' => false, 'exit_code' => -1, 'stdout' => '', 'stderr' => 'wp binary not found; use wpmcp/rest-request instead.' );
 				}
-			}
-			$stdout .= (string) stream_get_contents( $pipes[1] );
-			$stderr .= (string) stream_get_contents( $pipes[2] );
-			$closed = proc_close( $process );
-			if ( null === $exit_code ) {
-				$exit_code = (int) $closed;
-			}
-			return array(
-				'success'   => 0 === $exit_code,
-				'exit_code' => $exit_code,
-				'stdout'    => mb_substr( $stdout, -20000 ),
-				'stderr'    => mb_substr( $stderr, -20000 ),
-			);
-		},
-		'permission_callback' => $admin_gate,
-		'meta'                => $annotations( 'WP-CLI (admin)', false, true, false ),
-	) );
+				$full_command = 'timeout 90 ' . escapeshellarg( $wp_binary ) . ' --path=' . escapeshellarg( ABSPATH ) . ' ' . $cmdline;
+				$descriptors  = array( 0 => array( 'pipe', 'r' ), 1 => array( 'pipe', 'w' ), 2 => array( 'pipe', 'w' ) );
+				$process      = proc_open( $full_command, $descriptors, $pipes, ABSPATH );
+				if ( ! is_resource( $process ) ) {
+					return array( 'success' => false, 'exit_code' => -1, 'stdout' => '', 'stderr' => 'proc_open failed to start the wp process.' );
+				}
+				fclose( $pipes[0] );
+				stream_set_blocking( $pipes[1], false );
+				stream_set_blocking( $pipes[2], false );
+				$stdout    = '';
+				$stderr    = '';
+				$exit_code = null;
+				$start     = time();
+				while ( true ) {
+					$read   = array( $pipes[1], $pipes[2] );
+					$write  = null;
+					$except = null;
+					$ready  = @stream_select( $read, $write, $except, 2 );
+					if ( false === $ready ) {
+						break;
+					}
+					if ( $ready > 0 ) {
+						if ( in_array( $pipes[1], $read, true ) ) {
+							$stdout .= (string) stream_get_contents( $pipes[1] );
+						}
+						if ( in_array( $pipes[2], $read, true ) ) {
+							$stderr .= (string) stream_get_contents( $pipes[2] );
+						}
+					}
+					$status = proc_get_status( $process );
+					if ( ! $status['running'] ) {
+						$exit_code = (int) $status['exitcode'];
+						break;
+					}
+					if ( ( time() - $start ) > 95 ) {
+						$stderr .= "\n[wpmcp] killed after 95s";
+						proc_terminate( $process );
+						break;
+					}
+				}
+				$stdout .= (string) stream_get_contents( $pipes[1] );
+				$stderr .= (string) stream_get_contents( $pipes[2] );
+				$closed = proc_close( $process );
+				if ( null === $exit_code ) {
+					$exit_code = (int) $closed;
+				}
+				return array(
+					'success'   => 0 === $exit_code,
+					'exit_code' => $exit_code,
+					'stdout'    => mb_substr( $stdout, -20000 ),
+					'stderr'    => mb_substr( $stderr, -20000 ),
+				);
+			},
+			'permission_callback' => $admin_gate,
+			'meta'                => $annotations( 'WP-CLI (admin)', false, true, false ),
+		) );
+	}
 
 	// ---------------------------------------------------------------------
 	// 3. Files: list/read/write/delete/search under wp-content.
@@ -1957,8 +2276,44 @@ add_action( 'wp_abilities_api_init', function () {
 					if ( ! empty( $input['parent_id'] ) && is_numeric( $input['parent_id'] ) ) {
 						wp_update_post( array( 'ID' => (int) $new_id, 'post_parent' => (int) $input['parent_id'] ) );
 					}
-					$elements = isset( $input['elements'] ) && is_array( $input['elements'] ) ? $input['elements'] : array();
-					$written  = wpmcp_el_write( (int) $new_id, (string) wp_json_encode( $elements ), 'create-page' );
+					$elements = isset( $input['elements'] ) && is_array( $input['elements'] ) ? array_values( $input['elements'] ) : array();
+					$seen     = array();
+					$layout   = array();
+					$loose    = array();
+					foreach ( $elements as $node ) {
+						if ( ! is_array( $node ) || empty( $node['elType'] ) || ! is_string( $node['elType'] ) ) {
+							return array( 'ok' => false, 'action' => 'create-page', 'message' => 'Every entry in elements needs an elType, e.g. {"elType":"section","elements":[...]}. Omit elements to create an empty page, then use add-widget.' );
+						}
+						$id = (string) ( $node['id'] ?? '' );
+						if ( '' === $id || isset( $seen[ $id ] ) ) {
+							$id = wpmcp_el_new_id( $seen );
+						}
+						$seen[ $id ] = true;
+						$node['id']  = $id;
+						if ( ! isset( $node['settings'] ) || ! is_array( $node['settings'] ) ) {
+							$node['settings'] = array();
+						}
+						if ( ! isset( $node['elements'] ) ) {
+							$node['elements'] = array();
+						}
+						if ( ! is_array( $node['elements'] ) ) {
+							return array( 'ok' => false, 'action' => 'create-page', 'message' => 'elements inside a node must be an array of child nodes.' );
+						}
+						$type = (string) $node['elType'];
+						if ( in_array( $type, array( 'section', 'container' ), true ) || 0 === strpos( $type, 'e-' ) ) {
+							$layout[] = $node;
+						} else {
+							// A raw widget at the top level is not a valid Elementor
+							// document: wrap the loose nodes in section > column.
+							$loose[] = $node;
+						}
+					}
+					if ( $loose ) {
+						$pair                                    = wpmcp_el_section_pair( $seen );
+						$pair['section']['elements'][0]['elements'] = $loose;
+						$layout[]                                = $pair['section'];
+					}
+					$written = wpmcp_el_write( (int) $new_id, (string) wp_json_encode( $layout ), 'create-page' );
 					if ( is_wp_error( $written ) ) {
 						return $fail( $written );
 					}
@@ -2008,7 +2363,7 @@ add_action( 'wp_abilities_api_init', function () {
 					$merged  = wpmcp_el_merge( $current, $settings );
 					update_post_meta( $kit, '_elementor_page_settings', wp_slash( $merged ) );
 					delete_post_meta( $kit, '_elementor_css' );
-					wpmcp_el_flush( $kit );
+					wpmcp_el_flush_all();
 					return array(
 						'ok'      => true,
 						'action'  => 'set-globals',
@@ -2148,11 +2503,20 @@ add_action( 'wp_abilities_api_init', function () {
 			),
 		),
 		'execute_callback' => function ( $input ) {
-			$url = (string) ( $input['url'] ?? '' );
-			if ( ! preg_match( '#^https?://#i', $url ) ) {
-				return array( 'ok' => false, 'status' => 0, 'content_type' => '', 'bytes' => 0, 'html' => 'Only http(s) URLs are allowed.' );
+			$url   = (string) ( $input['url'] ?? '' );
+			$guard = wpmcp_check_url( $url );
+			if ( is_wp_error( $guard ) ) {
+				return array( 'ok' => false, 'status' => 0, 'content_type' => '', 'bytes' => 0, 'html' => $guard->get_error_message() );
 			}
-			$response = wp_remote_get( $url, array( 'timeout' => 25, 'redirection' => 5, 'user-agent' => 'Mozilla/5.0 (wp-mcp)' ) );
+			$response = wp_remote_get(
+				$url,
+				array(
+					'timeout'            => 25,
+					'redirection'        => 5,
+					'user-agent'         => 'Mozilla/5.0 (wp-mcp)',
+					'reject_unsafe_urls' => ! wpmcp_url_allows_private( $url ),
+				)
+			);
 			if ( is_wp_error( $response ) ) {
 				return array( 'ok' => false, 'status' => 0, 'content_type' => '', 'bytes' => 0, 'html' => $response->get_error_message() );
 			}
@@ -2199,8 +2563,9 @@ add_action( 'wp_abilities_api_init', function () {
 				return array( 'ok' => false, 'id' => 0, 'url' => '', 'mime' => 'Read-only mode is on (WPMCP_READONLY): media import is disabled.' );
 			}
 			$url = (string) ( $input['url'] ?? '' );
-			if ( ! preg_match( '#^https?://#i', $url ) ) {
-				return array( 'ok' => false, 'id' => 0, 'url' => '', 'mime' => 'Only http(s) URLs are allowed.' );
+			$guard = wpmcp_check_url( $url );
+			if ( is_wp_error( $guard ) ) {
+				return array( 'ok' => false, 'id' => 0, 'url' => '', 'mime' => $guard->get_error_message() );
 			}
 			require_once ABSPATH . 'wp-admin/includes/file.php';
 			require_once ABSPATH . 'wp-admin/includes/media.php';
@@ -2209,8 +2574,17 @@ add_action( 'wp_abilities_api_init', function () {
 			if ( is_wp_error( $tmp ) ) {
 				return array( 'ok' => false, 'id' => 0, 'url' => '', 'mime' => $tmp->get_error_message() );
 			}
+			$size = (int) @filesize( $tmp );
+			if ( $size > 26214400 ) {
+				@unlink( $tmp );
+				return array( 'ok' => false, 'id' => 0, 'url' => '', 'mime' => 'File is ' . round( $size / 1048576, 1 ) . ' MB; the limit is 25 MB.' );
+			}
+			$name = basename( (string) wp_parse_url( $url, PHP_URL_PATH ) );
+			if ( '' === $name || '.' === $name ) {
+				$name = 'import-' . gmdate( 'Ymd-His' );
+			}
 			$file = array(
-				'name'     => basename( (string) wp_parse_url( $url, PHP_URL_PATH ) ),
+				'name'     => $name,
 				'tmp_name' => $tmp,
 			);
 			$id = media_handle_sideload( $file, 0, (string) ( $input['title'] ?? '' ) );
@@ -2258,9 +2632,10 @@ add_action( 'wp_abilities_api_init', function () {
 			),
 		),
 		'execute_callback' => function ( $input ) {
-			$url = (string) ( $input['url'] ?? '' );
-			if ( ! preg_match( '#^https?://#i', $url ) ) {
-				return array( 'ok' => false, 'scores' => array(), 'opportunities' => array( array( 'error' => 'Only http(s) URLs are allowed.' ) ) );
+			$url   = (string) ( $input['url'] ?? '' );
+			$guard = wpmcp_check_url( $url );
+			if ( is_wp_error( $guard ) ) {
+				return array( 'ok' => false, 'source' => 'none', 'scores' => array(), 'opportunities' => array( array( 'error' => $guard->get_error_message() ) ) );
 			}
 			$strategy = ( 'desktop' === ( $input['strategy'] ?? '' ) ) ? 'desktop' : 'mobile';
 			$endpoint = 'https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=' . rawurlencode( $url ) . '&strategy=' . $strategy . '&category=performance&category=accessibility&category=best-practices&category=seo';
@@ -2350,7 +2725,7 @@ add_action( 'wp_abilities_api_init', function () {
 	// ---------------------------------------------------------------------
 	wp_register_ability( 'wpmcp/list-skills', array(
 		'label'        => 'List Skills',
-		'description'  => 'List the bundled WordPress/WooCommerce/Elementor skill playbooks with slug, title, category and summary. Load one with wpmcp/get-skill before starting a matching task. Optionally filter by category or a keyword.',
+		'description'  => 'List the WordPress/WooCommerce/Elementor skill playbooks (bundled with the plugin plus any written on this site) with slug, title, category, source and summary. Load one with wpmcp/get-skill before starting a matching task. Optionally filter by category or a keyword.',
 		'category'     => 'wpmcp',
 		'input_schema' => array(
 			'type'       => 'object',
@@ -2362,7 +2737,7 @@ add_action( 'wp_abilities_api_init', function () {
 		'output_schema' => array(
 			'type'       => 'object',
 			'properties' => array(
-				'skills' => array( 'description' => 'slug => {title, category, summary}' ),
+				'skills' => array( 'description' => 'slug => {title, category, summary, source}' ),
 				'count'  => array( 'type' => 'integer' ),
 			),
 		),
@@ -2390,7 +2765,7 @@ add_action( 'wp_abilities_api_init', function () {
 	// ---------------------------------------------------------------------
 	wp_register_ability( 'wpmcp/get-skill', array(
 		'label'        => 'Get Skill',
-		'description'  => 'Return the full markdown playbook for one bundled skill slug (see wpmcp/list-skills). Do not guess slugs.',
+		'description'  => 'Return the full markdown playbook for one skill slug (see wpmcp/list-skills). A site playbook shadows a bundled one with the same slug. Do not guess slugs.',
 		'category'     => 'wpmcp',
 		'input_schema' => array(
 			'type'       => 'object',
@@ -2409,8 +2784,8 @@ add_action( 'wp_abilities_api_init', function () {
 		),
 		'execute_callback' => function ( $input ) {
 			$slug = preg_replace( '/[^a-z0-9\-_]/i', '', (string) ( $input['slug'] ?? '' ) );
-			$file = wpmcp_skills_dir() . $slug . '.md';
-			if ( '' === $slug || ! is_file( $file ) ) {
+			$file = wpmcp_skill_file( $slug );
+			if ( '' === $slug || '' === $file ) {
 				return array( 'ok' => false, 'slug' => $slug, 'content' => 'Skill not found. Call wpmcp/list-skills first.' );
 			}
 			return array( 'ok' => true, 'slug' => $slug, 'content' => (string) file_get_contents( $file ) );
@@ -2424,7 +2799,7 @@ add_action( 'wp_abilities_api_init', function () {
 	// ---------------------------------------------------------------------
 	wp_register_ability( 'wpmcp/search-skills', array(
 		'label'        => 'Search Skills',
-		'description'  => 'Keyword-search the full text of all bundled skills and return the best matching slugs with a short snippet around the first hit. Use this when you are unsure which playbook covers a task.',
+		'description'  => 'Keyword-search the full text of every skill (bundled and site-written) and return the best matching slugs with a short snippet around the first hit. Use this when you are unsure which playbook covers a task.',
 		'category'     => 'wpmcp',
 		'input_schema' => array(
 			'type'       => 'object',
@@ -2447,9 +2822,12 @@ add_action( 'wp_abilities_api_init', function () {
 				return array( 'results' => array() );
 			}
 			$terms = preg_split( '/\s+/', strtolower( $query ) );
-			$dir   = wpmcp_skills_dir();
 			$hits  = array();
-			foreach ( (array) glob( $dir . '*.md' ) as $file ) {
+			foreach ( array_keys( wpmcp_all_skills() ) as $slug ) {
+				$file = wpmcp_skill_file( $slug );
+				if ( '' === $file ) {
+					continue;
+				}
 				$skill = wpmcp_parse_skill( $file );
 				$hay   = strtolower( $skill['body'] );
 				$score = 0;
@@ -2505,7 +2883,7 @@ add_action( 'wp_abilities_api_init', function () {
 				'site'       => array( 'description' => 'Versions, URLs, theme, locale, permalinks, builder state.' ),
 				'stack'      => array( 'description' => 'Active plugins with name and version.' ),
 				'abilities'  => array( 'description' => 'Ability name => label, when to use, readonly, destructive.' ),
-				'skills'     => array( 'description' => 'slug => title, category, summary.' ),
+				'skills'     => array( 'description' => 'slug => title, category, summary, source.' ),
 				'warnings'   => array( 'description' => 'Cheap problems worth knowing before editing.' ),
 				'guardrails' => array( 'description' => 'Operating rules for this site.' ),
 			),
@@ -2560,6 +2938,9 @@ add_action( 'wp_abilities_api_init', function () {
 			if ( ! wpmcp_has_backup_plugin() ) {
 				$warnings[] = 'No known backup plugin is active. Take a database export (wpmcp/wpcli: db export) before destructive work.';
 			}
+			if ( ! wpmcp_wpcli_enabled() ) {
+				$warnings[] = 'WP-CLI is opt-in and currently off: wpmcp/wpcli is not registered. Use wpmcp/rest-request and wpmcp/files, or ask the administrator to set define( \'WPMCP_ENABLE_WPCLI\', true ) in wp-config.php.';
+			}
 			$log_path = WP_CONTENT_DIR . '/debug.log';
 			if ( is_file( $log_path ) && filesize( $log_path ) > 1048576 ) {
 				$warnings[] = 'wp-content/debug.log is ' . round( filesize( $log_path ) / 1048576, 1 ) . ' MB — read the tail with wpmcp/site-health sections=["errors"].';
@@ -2584,6 +2965,7 @@ add_action( 'wp_abilities_api_init', function () {
 				'active_plugins'       => count( wpmcp_active_plugins() ),
 				'pending_updates'      => $updates,
 				'readonly'             => wpmcp_is_readonly(),
+				'wpcli'                => wpmcp_wpcli_enabled() ? 'enabled' : 'disabled (opt-in: WPMCP_ENABLE_WPCLI)',
 			);
 			if ( defined( 'ELEMENTOR_VERSION' ) ) {
 				$site['elementor'] = array( 'version' => ELEMENTOR_VERSION );
@@ -2635,10 +3017,10 @@ add_action( 'wp_abilities_api_init', function () {
 				'warnings'   => $warnings,
 				'guardrails' => array(
 					'Load a skill playbook with wpmcp/get-skill before editing a domain you have not touched in this session.',
-					'Export the database with wpmcp/wpcli "db export" before schema, plugin or bulk content changes.',
-					'Prefer wpmcp/rest-request for CRUD; use wpmcp/wpcli for what REST cannot reach (menus, widgets, options, transients, search-replace).',
+					'Export the database with wpmcp/wpcli "db export" (when WP-CLI is enabled) before schema, plugin or bulk content changes.',
+					'Prefer wpmcp/rest-request for CRUD; use wpmcp/wpcli, when enabled, for what REST cannot reach (menus, widgets, options, transients, search-replace).',
 					'Every wpmcp/files write and delete keeps a rollback copy: list them with wpmcp/restore action=list.',
-					'Verify front-end output with wpmcp/fetch-page after any change, and purge LiteSpeed with wpmcp/wpcli "litespeed-purge all".',
+					'Verify front-end output with wpmcp/fetch-page after any change, and purge LiteSpeed (wpmcp/wpcli "litespeed-purge all" when enabled).',
 					'Never store credentials in content, options, files or logs. The audit log records ability calls, not secrets.',
 				),
 			);
@@ -2905,7 +3287,7 @@ add_action( 'wp_abilities_api_init', function () {
 	// ---------------------------------------------------------------------
 	wp_register_ability( 'wpmcp/skill-write', array(
 		'label'        => 'Write Skill',
-		'description'  => 'Create, update or delete a skill playbook in the site\'s skills library, so what an agent learns here stays here for every future client. action=save takes slug, title, category, summary and body (markdown, 200-8000 chars ideal, must start with a "# " heading) and writes the front matter; the previous version is backed up first. action=delete needs confirm:true and also keeps a backup. Refused in read-only mode.',
+		'description'  => 'Create, update or delete a skill playbook in the site\'s own library (wp-content/wpmcp-skills, which survives plugin updates), so what an agent learns here stays here for every future client. A site playbook shadows a bundled one with the same slug. action=save takes slug, title, category, summary and body (markdown, 200-8000 chars ideal, must start with a "# " heading) and writes the front matter; the previous version is backed up first. action=delete needs confirm:true and also keeps a backup; bundled playbooks cannot be deleted, only overridden. Refused in read-only mode.',
 		'category'     => 'wpmcp',
 		'input_schema' => array(
 			'type'       => 'object',
@@ -2941,14 +3323,24 @@ add_action( 'wp_abilities_api_init', function () {
 			if ( '' === $slug || strlen( $slug ) > 64 ) {
 				return array( 'ok' => false, 'slug' => $slug, 'bytes' => 0, 'message' => 'Slug must be 1-64 chars of a-z, 0-9 and hyphens.' );
 			}
-			$file = wpmcp_skills_dir() . $slug . '.md';
+			$file = wpmcp_user_skills_dir() . $slug . '.md';
 
 			if ( 'delete' === $action ) {
 				if ( empty( $input['confirm'] ) ) {
 					return wpmcp_confirm_error( 'delete skill ' . $slug ) + array( 'slug' => $slug, 'bytes' => 0 );
 				}
 				if ( ! is_file( $file ) ) {
-					return array( 'ok' => false, 'slug' => $slug, 'bytes' => 0, 'message' => 'Skill not found.' );
+					$bundled = is_file( wpmcp_skills_dir() . $slug . '.md' );
+					return array(
+						'ok'      => false,
+						'slug'    => $slug,
+						'bytes'   => 0,
+						'created' => false,
+						'backup'  => '',
+						'message' => $bundled
+							? 'That slug is a bundled playbook and cannot be deleted; save a site version with the same slug to override it.'
+							: 'Skill not found in the site library.',
+					);
 				}
 				$saved = wpmcp_backup_file( $file, 'skill-delete' );
 				$ok    = @unlink( $file );
@@ -2992,7 +3384,7 @@ add_action( 'wp_abilities_api_init', function () {
 			}
 			$tmp = $file . '.tmp';
 			if ( false === @file_put_contents( $tmp, $doc ) ) {
-				return array( 'ok' => false, 'slug' => $slug, 'bytes' => 0, 'message' => 'Could not write the temporary file. Is the plugin directory writable?' );
+				return array( 'ok' => false, 'slug' => $slug, 'bytes' => 0, 'message' => 'Could not write the temporary file. Is wp-content writable?' );
 			}
 			if ( ! @rename( $tmp, $file ) ) {
 				@unlink( $tmp );

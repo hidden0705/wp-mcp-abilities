@@ -66,7 +66,7 @@ Safest approach: read the raw content, replace the exact string once, write back
 ```
 wp eval '
 $c = get_post_field( "post_content", 123 );
-$c = str_replace( "Old price Rs 1,499", "New price Rs 1,299", $c );
+$c = str_replace( "Old price $149", "New price $129", $c );
 wp_update_post( array( "ID" => 123, "post_content" => wp_slash( $c ) ) );
 delete_post_meta( 123, "_elementor_css" );
 '
@@ -135,7 +135,7 @@ For many posts, loop in one `eval` rather than hundreds of REST calls:
 
 ```
 wp eval '
-$ids = get_posts( array( "post_type" => "product", "fields" => "ids", "posts_per_page" => -1, "meta_key" => "_qadri_flag", "meta_value" => "1" ) );
+$ids = get_posts( array( "post_type" => "product", "fields" => "ids", "posts_per_page" => -1, "meta_key" => "_example_flag", "meta_value" => "1" ) );
 foreach ( $ids as $id ) {
     wp_update_post( array( "ID" => $id, "post_excerpt" => "Updated line" ) );
 }

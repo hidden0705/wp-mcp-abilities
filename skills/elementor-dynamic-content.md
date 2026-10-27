@@ -41,7 +41,7 @@ Common tags:
 ## Custom fields (ACF / meta)
 
 - ACF fields are exposed via the `acf` dynamic tag (Pro/ACF integration) or `meta` with the field key.
-- For plain post meta, use the `meta` tag with key `_qadri_fabric`.
+- For plain post meta, use the `meta` tag with key `_example_fabric`.
 - Meta keys starting with `_` are hidden fields; the tag still reads them.
 - If the value is empty, the widget shows the fallback — set a sensible fallback.
 

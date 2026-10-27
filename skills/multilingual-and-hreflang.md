@@ -42,9 +42,9 @@ Do not run two multilingual plugins. Do not machine-translate checkout and legal
 Every page in a language set needs reciprocal links:
 
 ```html
-<link rel="alternate" hreflang="en" href="https://qadrimarket.com/product/cotton-kurta/" />
-<link rel="alternate" hreflang="hi" href="https://qadrimarket.com/hi/product/cotton-kurta/" />
-<link rel="alternate" hreflang="x-default" href="https://qadrimarket.com/product/cotton-kurta/" />
+<link rel="alternate" hreflang="en" href="https://example.com/product/cotton-kurta/" />
+<link rel="alternate" hreflang="hi" href="https://example.com/hi/product/cotton-kurta/" />
+<link rel="alternate" hreflang="x-default" href="https://example.com/product/cotton-kurta/" />
 ```
 
 Rules:
@@ -60,7 +60,7 @@ Most plugins add these automatically; verify in the rendered HTML rather than tr
 ## Verify
 
 ```
-wpmcp/fetch-page { "url": "https://qadrimarket.com/hi/" }
+wpmcp/fetch-page { "url": "https://example.com/hi/" }
 ```
 
 Grep for `hreflang`. Then check the English page links back. A one-way set is ignored.

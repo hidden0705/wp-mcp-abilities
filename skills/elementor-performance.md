@@ -12,7 +12,7 @@ Elementor is not inherently slow; heavy pages are. Measure before changing setti
 ## Baseline
 
 ```
-wpmcp/audit-url { "url": "https://qadrimarket.com/", "strategy": "mobile" }
+wpmcp/audit-url { "url": "https://example.com/", "strategy": "mobile" }
 ```
 
 Then check page weight, DOM nodes and requests in DevTools. Targets: < 1.5 MB, < 1,500 DOM nodes, < 70 requests for a store homepage.

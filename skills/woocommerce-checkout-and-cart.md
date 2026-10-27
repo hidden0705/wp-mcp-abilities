@@ -34,7 +34,7 @@ Block checkout (recommended):
 add_action( 'woocommerce_init', function () {
     if ( ! function_exists( 'woocommerce_register_additional_checkout_field' ) ) { return; }
     woocommerce_register_additional_checkout_field( array(
-        'id'       => 'qadri/gstin',
+        'id'       => 'example/gstin',
         'label'    => 'GSTIN (optional)',
         'location' => 'address',
         'type'     => 'text',
@@ -48,7 +48,7 @@ Read it from the order:
 ```
 wp eval '
 $order = wc_get_order( 1234 );
-echo $order->get_meta( "_wc_other/qadri/gstin" );
+echo $order->get_meta( "_wc_other/example/gstin" );
 '
 ```
 
@@ -92,7 +92,7 @@ Never cache:
 LiteSpeed normally excludes these. Verify:
 
 ```
-curl -sI https://qadrimarket.com/checkout/ | grep -i cache-control
+curl -sI https://example.com/checkout/ | grep -i cache-control
 ```
 
 Expect `no-cache, private` or `no-store`.

@@ -78,7 +78,7 @@ wp user meta delete 1 _application_passwords
 - Block `xmlrpc.php` unless a specific integration needs it.
 
 ```
-wpmcp/fetch-page { "url": "https://qadrimarket.com/xmlrpc.php" }
+wpmcp/fetch-page { "url": "https://example.com/xmlrpc.php" }
 ```
 
 A 405/403 is good. A 200 that accepts POST is a brute-force amplifier.

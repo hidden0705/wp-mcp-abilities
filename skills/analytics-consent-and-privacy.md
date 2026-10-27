@@ -40,7 +40,7 @@ WordPress plugins that inject tags directly (Site Kit, MonsterInsights, pixel pl
 ## Verify tags
 
 ```
-wpmcp/fetch-page { "url": "https://qadrimarket.com/" }
+wpmcp/fetch-page { "url": "https://example.com/" }
 ```
 
 Look for `googletagmanager.com/gtag/js`, `GTM-XXXX`, `G-XXXX`, duplicate `fbq('init'`.
@@ -112,7 +112,7 @@ wp eval 'echo wp_privacy_anonymize_ip( "203.0.113.7" );'
 ## Verification commands
 
 ```
-wpmcp/fetch-page { "url": "https://qadrimarket.com/" }
+wpmcp/fetch-page { "url": "https://example.com/" }
 ```
 
 Check for pre-consent requests to `google-analytics.com`, `googletagmanager.com`, `facebook.net`. A request before consent is a compliance defect, not a performance one.

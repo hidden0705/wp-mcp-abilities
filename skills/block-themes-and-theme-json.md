@@ -121,7 +121,7 @@ Elementor does not read `theme.json` for its styling. On a block theme, Elemento
 <?php
 /**
  * Title: Hero
- * Slug: qadri/hero
+ * Slug: example/hero
  * Categories: featured
  */
 ?>

@@ -31,7 +31,7 @@ Fallback through PHP:
 
 ```
 wp eval 'do_action( "litespeed_purge_all" ); echo "purged";'
-wp eval 'do_action( "litespeed_purge_url", "https://qadrimarket.com/shop/" );'
+wp eval 'do_action( "litespeed_purge_url", "https://example.com/shop/" );'
 ```
 
 ## What to purge after what
@@ -51,7 +51,7 @@ wp eval 'do_action( "litespeed_purge_url", "https://qadrimarket.com/shop/" );'
 ## Verify cache behaviour
 
 ```
-curl -sI https://qadrimarket.com/ | grep -i -E 'x-litespeed|cache-control|age'
+curl -sI https://example.com/ | grep -i -E 'x-litespeed|cache-control|age'
 ```
 
 - `x-litespeed-cache: hit` → served from page cache.

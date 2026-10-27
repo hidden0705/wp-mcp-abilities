@@ -102,12 +102,12 @@ Put it in an mu-plugin, not a theme:
 
 ```php
 add_action( 'rest_api_init', function () {
-    register_rest_route( 'qadri/v1', '/quote', array(
+    register_rest_route( 'example/v1', '/quote', array(
         'methods'             => 'POST',
         'callback'            => function ( WP_REST_Request $r ) {
             $name = sanitize_text_field( (string) $r->get_param( 'name' ) );
             if ( '' === $name ) {
-                return new WP_Error( 'qadri_missing_name', 'Name is required.', array( 'status' => 400 ) );
+                return new WP_Error( 'example_missing_name', 'Name is required.', array( 'status' => 400 ) );
             }
             return rest_ensure_response( array( 'ok' => true, 'name' => $name ) );
         },

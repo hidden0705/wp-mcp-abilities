@@ -145,7 +145,7 @@ Search is title/content based; SKU lookup is exact and cheaper.
 
 ```
 PUT /wc/v3/products/{id}
-{ "meta_data": [ { "key": "_qadri_fabric", "value": "Handloom" } ] }
+{ "meta_data": [ { "key": "_example_fabric", "value": "Handloom" } ] }
 ```
 
 `meta_data` replaces the whole list on update — send existing keys you want to keep. Prefer a registered custom field with REST exposure for integrations.

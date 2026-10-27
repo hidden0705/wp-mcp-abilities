@@ -53,7 +53,7 @@ Cache: home, shop, category, product, blog, static pages.
 Verify headers:
 
 ```
-curl -sI https://qadrimarket.com/product/cotton-kurta/ | grep -i -E 'x-litespeed|cache-control'
+curl -sI https://example.com/product/cotton-kurta/ | grep -i -E 'x-litespeed|cache-control'
 ```
 
 ## Cart fragments
