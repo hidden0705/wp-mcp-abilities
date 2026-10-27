@@ -26,7 +26,8 @@ jobs:
       - name: Inspect archive
         run: |
           unzip -l wp-mcp-abilities.zip
-          test -f wp-mcp-abilities/wp-mcp-abilities.php
+          unzip -l wp-mcp-abilities.zip | grep -q 'wp-mcp-abilities/wp-mcp-abilities.php'
+          unzip -l wp-mcp-abilities.zip | grep -q 'wp-mcp-abilities/uninstall.php'
 
       - name: Publish release
         uses: softprops/action-gh-release@v2
