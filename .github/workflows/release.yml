@@ -1,0 +1,35 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build release ZIP
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build ZIP from the tag
+        run: |
+          git archive --format=zip \
+            --prefix=wp-mcp-abilities/ \
+            -o wp-mcp-abilities.zip \
+            "$GITHUB_REF_NAME"
+
+      - name: Inspect archive
+        run: |
+          unzip -l wp-mcp-abilities.zip
+          test -f wp-mcp-abilities/wp-mcp-abilities.php
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: wp-mcp-abilities.zip
+          generate_release_notes: true
