@@ -4,7 +4,7 @@ Tags: mcp, ai, wp-cli, elementor, woocommerce
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 8.0
-Stable tag: 2.5.0
+Stable tag: 2.6.0
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -115,6 +115,12 @@ None. The plugin has no admin screens; it is configured with constants and filte
 
 == Changelog ==
 
+= 2.6.0 =
+* Fixed: `search-skills` no longer returns loosely related playbooks. A hit must
+  match at least half the query terms, and a plugin the library does not cover
+  returns no results plus a hint naming it.
+* Changed: `agent-context` tells the agent what to do when no playbook matches.
+
 = 2.5.0 =
 * Changed: `wpmcp/wpcli` is opt-in. Add `define( 'WPMCP_ENABLE_WPCLI', true );` to
   `wp-config.php` to keep using WP-CLI. Without it the ability is not registered.
@@ -142,6 +148,9 @@ None. The plugin has no admin screens; it is configured with constants and filte
 Internal releases, not publicly distributed.
 
 == Upgrade Notice ==
+
+= 2.6.0 =
+Search results are stricter. No configuration change required.
 
 = 2.5.0 =
 WP-CLI is now opt-in: add `define( 'WPMCP_ENABLE_WPCLI', true );` to wp-config.php

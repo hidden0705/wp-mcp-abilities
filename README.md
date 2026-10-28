@@ -98,7 +98,7 @@ with `-`. Thirteen are always registered; `wpmcp/wpcli` only when the site opts 
 | `wpmcp/audit-url` | `wpmcp-audit-url` | PageSpeed Insights, local fallback metrics | — |
 | `wpmcp/list-skills` | `wpmcp-list-skills` | Skill index, filter by category/keyword | — |
 | `wpmcp/get-skill` | `wpmcp-get-skill` | Full markdown playbook for one slug | — |
-| `wpmcp/search-skills` | `wpmcp-search-skills` | Full-text search across playbooks | — |
+| `wpmcp/search-skills` | `wpmcp-search-skills` | Full-text search with a relevance floor; names plugins the library does not cover | — |
 | `wpmcp/skill-write` | `wpmcp-skill-write` | Create/update/delete a playbook, with backup | yes |
 | `wpmcp/site-health` | `wpmcp-site-health` | Scored diagnostics, six sections | — |
 | `wpmcp/restore` | `wpmcp-restore` | List/restore/prune rollback copies | yes |
@@ -160,6 +160,14 @@ shadows it, so an agent can override a shipped playbook without losing the origi
 An existing install that edited playbooks inside the plugin folder has them moved to
 `wp-content/wpmcp-skills/` once, on the first request after upgrading. The move uses
 `skills/manifest.json` checksums to tell a shipped file from an edited one.
+
+Search has a relevance floor. A hit must match at least half of the query terms, and
+results are ranked by a term-weighted score rather than by any single word. If the
+query names something no playbook mentions — LearnPress, SeedProd, a plugin this
+library does not cover — `search-skills` returns no results, lists the uncovered
+term, and tells the agent to continue with the core abilities and save what it
+learns with `skill-write`. It no longer offers loosely related playbooks that look
+like an answer.
 
 ## Safety model
 

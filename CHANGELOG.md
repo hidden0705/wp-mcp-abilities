@@ -11,6 +11,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Internationalise the remaining agent-facing descriptions.
 
+## [2.6.0] - 2026-10-28
+
+### Fixed
+
+- `wpmcp/search-skills` returned any playbook that matched one word, so a query
+  naming a plugin the library does not cover ("seedprod coming soon page") listed
+  Elementor playbooks scoring 36 — they matched "page" and nothing else. That reads
+  as an answer to an agent that cannot see the ranking code. A hit now has to match
+  at least half of the query terms, terms are weighted by rarity, and the slug and
+  title outrank passing mentions in a long body. A query term that appears in no
+  playbook returns no results, names the uncovered term, and explains what to do
+  next instead of offering the nearest neighbour.
+- `search-skills` results now carry `matched` and `coverage`, and an empty search
+  carries a `hint`.
+
+### Changed
+
+- `agent-context` guardrails now say what to do when no playbook matches: continue
+  with the core abilities, back up first, verify, and save the lesson with
+  `wpmcp/skill-write` rather than improvising from a near match.
+
 ## [2.5.0] - 2026-10-27
 
 ### Changed

@@ -3,7 +3,7 @@
  * Plugin Name:       WP MCP Abilities
  * Plugin URI:        https://github.com/hidden0705/wp-mcp-abilities
  * Description:       Administrator-level MCP abilities for WordPress: WP-CLI, REST, files with rollback, Elementor builder, site health, and 46 skill playbooks.
- * Version:           2.5.0
+ * Version:           2.6.0
  * Requires at least: 6.9
  * Requires PHP:      8.0
  * Requires Plugins:  mcp-adapter
@@ -29,7 +29,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-const WPMCP_VERSION = '2.5.0';
+const WPMCP_VERSION = '2.6.0';
 
 /**
  * The abilities this plugin registers, in tool-list order.
@@ -477,6 +477,199 @@ function wpmcp_all_skills() {
 	}
 	ksort( $cache );
 	return $cache;
+}
+
+/**
+ * Words that carry no meaning for a playbook search.
+ *
+ * Without this list a query like "how do I fix the checkout" scores every
+ * playbook that happens to contain "the" and buries the one that matters.
+ *
+ * @return string[]
+ */
+function wpmcp_skill_stopwords() {
+	return array(
+		'a', 'about', 'after', 'all', 'also', 'an', 'and', 'any', 'are', 'as', 'at',
+		'be', 'before', 'but', 'by', 'can', 'could', 'did', 'do', 'does', 'doing',
+		'for', 'from', 'get', 'gets', 'had', 'has', 'have', 'here', 'how', 'if',
+		'in', 'into', 'is', 'it', 'its', 'just', 'make', 'me', 'my', 'need', 'needs',
+		'not', 'of', 'on', 'or', 'our', 'should', 'so', 'some', 'than', 'that',
+		'the', 'their', 'them', 'then', 'there', 'these', 'they', 'this', 'those',
+		'to', 'too', 'up', 'us', 'use', 'used', 'using', 'want', 'wants', 'was',
+		'we', 'were', 'what', 'when', 'where', 'which', 'who', 'why', 'will',
+		'with', 'would', 'you', 'your',
+	);
+}
+
+/**
+ * Search terms for a skill query.
+ *
+ * Splits on anything that is not a letter or digit, drops stopwords and very
+ * short fragments, and keeps the order the caller used.
+ *
+ * @param string $query Free-text query.
+ * @return string[]
+ */
+function wpmcp_skill_terms( $query ) {
+	$words = preg_split( '/[^a-z0-9]+/', strtolower( (string) $query ) );
+	$words = is_array( $words ) ? $words : array();
+	$stop  = wpmcp_skill_stopwords();
+	$terms = array();
+	foreach ( $words as $word ) {
+		if ( strlen( $word ) < 3 || in_array( $word, $stop, true ) ) {
+			continue;
+		}
+		$terms[ $word ] = true;
+	}
+	if ( ! $terms ) {
+		// Short but meaningful queries ("wp", "db") still deserve a search.
+		foreach ( $words as $word ) {
+			if ( strlen( $word ) >= 2 ) {
+				$terms[ $word ] = true;
+			}
+		}
+	}
+	return array_keys( $terms );
+}
+
+/**
+ * Keyword search across every playbook, with a relevance floor.
+ *
+ * The old implementation returned any playbook with one matching word, so
+ * "seedprod coming soon page" listed Elementor playbooks scoring 36: they
+ * matched "page" and nothing else. That looks like an answer to an agent that
+ * cannot see this code. Two rules keep the results honest:
+ *
+ * - A term no playbook mentions at all (a plugin this library does not cover)
+ *   returns no results plus a hint, instead of loosely related playbooks.
+ * - A hit must match at least half of the query terms, and results are ranked
+ *   by how much of the query they cover before raw score.
+ *
+ * @param string $query Free-text query.
+ * @param int    $limit Maximum hits.
+ * @return array{results:array,terms:string[],uncovered?:string[],hint?:string}
+ */
+function wpmcp_search_skills( $query, $limit = 8 ) {
+	$limit = min( 20, max( 1, (int) $limit ) );
+	$terms = wpmcp_skill_terms( $query );
+	if ( ! $terms ) {
+		return array(
+			'results' => array(),
+			'terms'   => array(),
+			'hint'    => 'The query had no searchable words. Try a plugin, action or symptom, e.g. "stock status" or "elementor cache".',
+		);
+	}
+
+	$docs = array();
+	foreach ( array_keys( wpmcp_all_skills() ) as $slug ) {
+		$file = wpmcp_skill_file( $slug );
+		if ( '' !== $file ) {
+			$docs[ $slug ] = wpmcp_parse_skill( $file );
+		}
+	}
+
+	$df = array_fill_keys( $terms, 0 );
+	foreach ( $docs as $skill ) {
+		$hay = strtolower( $skill['slug'] . ' ' . $skill['title'] . ' ' . $skill['summary'] . ' ' . $skill['body'] );
+		foreach ( $terms as $term ) {
+			if ( false !== strpos( $hay, $term ) ) {
+				++$df[ $term ];
+			}
+		}
+	}
+
+	// A term that appears in zero playbooks means the library does not cover
+	// that plugin. Report the longest such term only: in "seedprod coming soon
+	// page" the signal is "seedprod", not the ordinary words around it.
+	$uncovered = array();
+	foreach ( $terms as $term ) {
+		if ( 0 === $df[ $term ] && strlen( $term ) >= 4 ) {
+			$uncovered[] = $term;
+		}
+	}
+	if ( $uncovered ) {
+		$longest   = max( array_map( 'strlen', $uncovered ) );
+		$uncovered = array_values( array_filter( $uncovered, function ( $term ) use ( $longest ) {
+			return strlen( $term ) === $longest;
+		} ) );
+		return array(
+			'results'   => array(),
+			'terms'     => $terms,
+			'uncovered' => $uncovered,
+			'hint'      => 'No playbook mentions ' . implode( ', ', $uncovered ) . ', so this library does not cover that plugin or topic. Continue with the core abilities (wpmcp/agent-context lists them), take a backup before writing, verify the result, then save what you learned with wpmcp/skill-write so the next agent starts with it.',
+		);
+	}
+
+	$need = max( 1, (int) ceil( count( $terms ) / 2 ) );
+
+	// Weight rare terms higher: in "stock status", "stock" tells the two
+	// WooCommerce playbooks apart while "status" appears almost everywhere.
+	$total   = max( 1, count( $docs ) );
+	$weights = array();
+	foreach ( $terms as $term ) {
+		$weights[ $term ] = 1 + log( ( $total + 1 ) / ( $df[ $term ] + 1 ) );
+	}
+
+	$hits = array();
+	foreach ( $docs as $slug => $skill ) {
+		$title   = strtolower( $skill['title'] );
+		$summary = strtolower( $skill['summary'] );
+		$body    = strtolower( $skill['body'] );
+		$slug_l  = strtolower( $skill['slug'] );
+		$score   = 0;
+		$matched = 0;
+		$anchor  = '';
+		foreach ( $terms as $term ) {
+			// The slug and title say what a playbook is about; a long body
+			// mentions many things in passing, so its contribution is capped.
+			$term_score = 15 * substr_count( $slug_l, $term )
+				+ 10 * substr_count( $title, $term )
+				+ 5 * substr_count( $summary, $term )
+				+ min( 30, substr_count( $body, $term ) );
+			if ( $term_score > 0 ) {
+				++$matched;
+				if ( '' === $anchor ) {
+					$anchor = $term;
+				}
+			}
+			$score += $weights[ $term ] * $term_score;
+		}
+		if ( $matched < $need ) {
+			continue;
+		}
+		$pos     = '' === $anchor ? false : stripos( $skill['body'], $anchor );
+		$snippet = false === $pos ? '' : mb_substr( $skill['body'], max( 0, $pos - 90 ), 240 );
+		$hits[]  = array(
+			'slug'     => $skill['slug'],
+			'title'    => $skill['title'],
+			'category' => $skill['category'],
+			'score'    => (int) round( $score ),
+			'matched'  => $matched,
+			'coverage' => round( $matched / count( $terms ), 2 ),
+			'snippet'  => trim( preg_replace( '/\s+/', ' ', (string) $snippet ) ),
+		);
+	}
+	usort(
+		$hits,
+		function ( $a, $b ) {
+			if ( $a['score'] === $b['score'] ) {
+				if ( $a['coverage'] === $b['coverage'] ) {
+					return strcmp( $a['slug'], $b['slug'] );
+				}
+				return $b['coverage'] <=> $a['coverage'];
+			}
+			return $b['score'] <=> $a['score'];
+		}
+	);
+
+	$payload = array(
+		'results' => array_slice( $hits, 0, $limit ),
+		'terms'   => $terms,
+	);
+	if ( ! $hits ) {
+		$payload['hint'] = 'No playbook covers enough of this query. Try fewer or different words, or continue with the core abilities and save what you learn with wpmcp/skill-write.';
+	}
+	return $payload;
 }
 
 /** Resolve a path inside WP_CONTENT_DIR; returns absolute path or WP_Error. */
@@ -2799,7 +2992,7 @@ add_action( 'wp_abilities_api_init', function () {
 	// ---------------------------------------------------------------------
 	wp_register_ability( 'wpmcp/search-skills', array(
 		'label'        => 'Search Skills',
-		'description'  => 'Keyword-search the full text of every skill (bundled and site-written) and return the best matching slugs with a short snippet around the first hit. Use this when you are unsure which playbook covers a task.',
+		'description'  => 'Keyword-search the full text of every skill (bundled and site-written) and return the best matching slugs, ranked by how much of the query they cover, with a snippet around the first hit. If the library does not cover a term (a plugin with no playbook), it returns no results and a hint instead of loosely related playbooks. Use it when you are unsure which playbook covers a task.',
 		'category'     => 'wpmcp',
 		'input_schema' => array(
 			'type'       => 'object',
@@ -2812,50 +3005,17 @@ add_action( 'wp_abilities_api_init', function () {
 		'output_schema' => array(
 			'type'       => 'object',
 			'properties' => array(
-				'results' => array( 'description' => 'slug, title, category, score, snippet.' ),
+				'results'   => array( 'description' => 'slug, title, category, score, matched, coverage, snippet.' ),
+				'terms'     => array( 'description' => 'Query terms after stopword removal.' ),
+				'uncovered' => array( 'description' => 'Terms no playbook mentions; when present, results is empty.' ),
+				'hint'      => array( 'description' => 'What to do when nothing matched.' ),
 			),
 		),
 		'execute_callback' => function ( $input ) {
-			$query = trim( (string) ( $input['query'] ?? '' ) );
-			$limit = min( 20, max( 1, (int) ( $input['limit'] ?? 8 ) ) );
-			if ( '' === $query ) {
-				return array( 'results' => array() );
-			}
-			$terms = preg_split( '/\s+/', strtolower( $query ) );
-			$hits  = array();
-			foreach ( array_keys( wpmcp_all_skills() ) as $slug ) {
-				$file = wpmcp_skill_file( $slug );
-				if ( '' === $file ) {
-					continue;
-				}
-				$skill = wpmcp_parse_skill( $file );
-				$hay   = strtolower( $skill['body'] );
-				$score = 0;
-				foreach ( $terms as $term ) {
-					if ( strlen( $term ) < 2 ) {
-						continue;
-					}
-					$score += 5 * substr_count( strtolower( $skill['title'] ), $term );
-					$score += 3 * substr_count( strtolower( $skill['summary'] ), $term );
-					$score += substr_count( $hay, $term );
-				}
-				if ( 0 === $score ) {
-					continue;
-				}
-				$pos     = strpos( $hay, $terms[0] );
-				$snippet = false === $pos ? '' : mb_substr( $skill['body'], max( 0, $pos - 90 ), 240 );
-				$hits[]  = array(
-					'slug'     => $skill['slug'],
-					'title'    => $skill['title'],
-					'category' => $skill['category'],
-					'score'    => $score,
-					'snippet'  => trim( preg_replace( '/\s+/', ' ', (string) $snippet ) ),
-				);
-			}
-			usort( $hits, function ( $a, $b ) {
-				return $b['score'] <=> $a['score'];
-			} );
-			return array( 'results' => array_slice( $hits, 0, $limit ) );
+			return wpmcp_search_skills(
+				(string) ( $input['query'] ?? '' ),
+				(int) ( $input['limit'] ?? 8 )
+			);
 		},
 		'permission_callback' => $admin_gate,
 		'meta'                => $annotations( 'WP Search Skills', true, false, true ),
@@ -3017,6 +3177,7 @@ add_action( 'wp_abilities_api_init', function () {
 				'warnings'   => $warnings,
 				'guardrails' => array(
 					'Load a skill playbook with wpmcp/get-skill before editing a domain you have not touched in this session.',
+					'If wpmcp/search-skills finds no playbook, do not improvise from a near match: continue with the core abilities, take a backup before writing, verify the result, then save the lesson with wpmcp/skill-write so the next agent starts with it.',
 					'Export the database with wpmcp/wpcli "db export" (when WP-CLI is enabled) before schema, plugin or bulk content changes.',
 					'Prefer wpmcp/rest-request for CRUD; use wpmcp/wpcli, when enabled, for what REST cannot reach (menus, widgets, options, transients, search-replace).',
 					'Every wpmcp/files write and delete keeps a rollback copy: list them with wpmcp/restore action=list.',
