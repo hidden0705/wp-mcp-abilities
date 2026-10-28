@@ -11,6 +11,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Internationalise the remaining agent-facing descriptions.
 
+## [2.7.0] - 2026-10-28
+
+### Added
+
+- **Signed community skill feed.** Every install checks
+  `github.com/hidden0705/wp-mcp-skills` twice a day and installs only playbooks
+  whose manifest signature, sha256 and byte count all verify. The manifest is
+  signed with an offline RSA-3072 key; only the public key ships in the plugin.
+  Replaced and removed playbooks are backed up before the change, so
+  `wpmcp/restore` can undo a bad sync.
+- `wpmcp/skill-sync` with `action=status`, `check` and `apply`, plus per-feed
+  state (last check, last apply, installed count, last error) in `agent-context`.
+- Precedence `site` > team feed > `community` > `bundled`. A site playbook always
+  wins; a feed cannot replace a bundled slug unless its manifest entry says
+  `override: true`.
+- `WPMCP_SKILLS_FEED` kill switch and the `wpmcp_skill_feeds` filter for private
+  or team feeds. An unsigned feed is refused unless the site opts in per feed.
+- Tombstones: a playbook removed upstream is deleted from installs, not left
+  behind as a stale instruction.
+- `wp wpmcp export --author=<handle>` turns site-written playbooks into PR-ready
+  files for the community repository: it writes the expected front matter, maps
+  the site domain, emails and absolute paths to `example.com` /
+  `/path/to/wordpress/...`, skips files that look like they contain a secret, and
+  refuses to share a bundled slug without `--allow-override`.
+
+### Changed
+
+- `wpmcp/list-skills` reports feed playbooks with their `feed`, `author`,
+  `version` and `updated` fields, and resolves the winning source.
+- `agent-context` guardrails warn that community playbooks come from other sites
+  and must not be followed blindly.
+
 ## [2.6.0] - 2026-10-28
 
 ### Fixed

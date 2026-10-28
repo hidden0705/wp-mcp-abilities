@@ -4,15 +4,15 @@ Tags: mcp, ai, wp-cli, elementor, woocommerce
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 8.0
-Stable tag: 2.6.0
+Stable tag: 2.7.0
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Administrator-level MCP abilities for WordPress: REST, files with rollback, Elementor builder, site health, optional WP-CLI, and 46 skill playbooks.
+Administrator-level MCP abilities for WordPress: REST, files with rollback, Elementor builder, site health, optional WP-CLI, 46 bundled skill playbooks and a signed community feed.
 
 == Description ==
 
-WP MCP Abilities extends the official `mcp-adapter` plugin with 14 administrator-level
+WP MCP Abilities extends the official `mcp-adapter` plugin with 15 administrator-level
 abilities, each registered as a first-class MCP tool with its full input schema. An AI
 client calls a tool once instead of walking the adapter's discover → info → execute
 chain. There is no relay service and no call limit: the client talks straight to your
@@ -34,6 +34,7 @@ default: enable it with `define( 'WPMCP_ENABLE_WPCLI', true );`.
 * **Media import** – sideload a file from a URL into the Media Library.
 * **PageSpeed audit** – Google PageSpeed Insights, with a local fallback.
 * **Skills** – list, get, search and write 46 WordPress/WooCommerce/Elementor playbooks.
+* **Skill sync** – check and apply the signed community feed, with signature and hash checks.
 * **Site health** – scored diagnostics across six sections.
 * **Restore** – list, restore and prune the automatic rollback copies.
 
@@ -115,6 +116,23 @@ None. The plugin has no admin screens; it is configured with constants and filte
 
 == Changelog ==
 
+= 2.7.0 =
+* Added: signed community skill feed (github.com/hidden0705/wp-mcp-skills). Every
+  install checks it twice a day (or on the first MCP request when WP-Cron is
+  disabled), verifies an RSA-3072 manifest signature plus a
+  sha256 and byte count per file, and backs up every replaced or removed playbook.
+* Added: `wpmcp/skill-sync` with status, check and apply, plus per-feed state and
+  last error in `agent-context`.
+* Added: precedence site > team feed > community > bundled. A feed cannot replace
+  a bundled slug unless the manifest marks it `override: true`.
+* Added: `WPMCP_SKILLS_FEED` kill switch and the `wpmcp_skill_feeds` filter for
+  private or team feeds.
+* Changed: `list-skills` also reports feed playbooks with author, version and
+  updated date.
+* Added: `wp wpmcp export` turns site playbooks into PR-ready files for the
+  community repository, scrubbing the domain, emails and paths and refusing files
+  that look like they contain a secret.
+
 = 2.6.0 =
 * Fixed: `search-skills` no longer returns loosely related playbooks. A hit must
   match at least half the query terms, and a plugin the library does not cover
@@ -148,6 +166,11 @@ None. The plugin has no admin screens; it is configured with constants and filte
 Internal releases, not publicly distributed.
 
 == Upgrade Notice ==
+
+= 2.7.0 =
+The community feed is on by default and uses WP-Cron. No configuration change is
+required. Define `WPMCP_SKILLS_FEED` as false to disable it, or use the
+`wpmcp_skill_feeds` filter for a private feed.
 
 = 2.6.0 =
 Search results are stricter. No configuration change required.

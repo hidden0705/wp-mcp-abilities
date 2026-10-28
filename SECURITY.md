@@ -37,6 +37,7 @@ What that means in practice:
 | `wpmcp/elementor` | Change any page layout; read all page content |
 | `wpmcp/restore` | Restore old copies of edited files |
 | `wpmcp/skill-write` | Change the instructions future agents read |
+| `wpmcp/skill-sync` | Install a community playbook that misleads future agents (mitigated by review, signature, hashes and tombstones) |
 
 The correct mitigation is credential hygiene, not plugin-level sandboxing:
 
@@ -58,6 +59,11 @@ The correct mitigation is credential hygiene, not plugin-level sandboxing:
   address despite the guard.
 - A site playbook path that escapes `wp-content/wpmcp-skills/` or shadows an
   ability it should not.
+- A feed path that escapes its directory, a manifest signature that verifies with
+  the wrong key, or a file installed with a hash or byte count that does not match
+  the signed manifest.
+- A bundled playbook replaced by a feed without the manifest's explicit
+  `override: true`.
 - SQL injection, remote code execution or privilege escalation that does **not**
   require an administrator application password.
 - Exposure of secrets in the audit log, error messages or backups.
@@ -82,7 +88,9 @@ The correct mitigation is credential hygiene, not plugin-level sandboxing:
 - [ ] Application password scoped to that account; stored in a password manager.
 - [ ] `define( 'WPMCP_READONLY', true );` on production for inspection-only agents.
 - [ ] `wp-content/wpmcp-backups/` denied at the web server (Nginx snippet below).
-- [ ] `wp-content/wpmcp-skills/` denied at the web server (same rule).
+- [ ] `wp-content/wpmcp-skills/` and `wp-content/wpmcp-skills-feed/` denied at the web server (same rule).
+- [ ] Community feed left on (signed), or `WPMCP_SKILLS_FEED` off if the site must not follow outside playbooks.
+- [ ] Private feed public keys pinned per feed; `allow_unsigned` only for a feed you control end to end.
 - [ ] `WPMCP_ENABLE_WPCLI` off unless the agent needs it.
 - [ ] `DISALLOW_FILE_EDIT` on; `WP_DEBUG_DISPLAY` off.
 - [ ] Regular off-site backups, tested restores.
@@ -97,6 +105,11 @@ location ^~ /wp-content/wpmcp-backups/ {
 }
 
 location ^~ /wp-content/wpmcp-skills/ {
+	deny all;
+	return 403;
+}
+
+location ^~ /wp-content/wpmcp-skills-feed/ {
 	deny all;
 	return 403;
 }

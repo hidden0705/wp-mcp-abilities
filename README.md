@@ -84,7 +84,7 @@ printf '%s' 'admin:xxxx xxxx xxxx xxxx xxxx xxxx' | base64
 ## Tools
 
 All abilities require `manage_options`. Names map to MCP tools by replacing `/`
-with `-`. Thirteen are always registered; `wpmcp/wpcli` only when the site opts in.
+with `-`. Fourteen are always registered; `wpmcp/wpcli` only when the site opts in.
 
 | Ability | MCP tool | Purpose | Writes |
 | --- | --- | --- | --- |
@@ -100,6 +100,7 @@ with `-`. Thirteen are always registered; `wpmcp/wpcli` only when the site opts 
 | `wpmcp/get-skill` | `wpmcp-get-skill` | Full markdown playbook for one slug | — |
 | `wpmcp/search-skills` | `wpmcp-search-skills` | Full-text search with a relevance floor; names plugins the library does not cover | — |
 | `wpmcp/skill-write` | `wpmcp-skill-write` | Create/update/delete a playbook, with backup | yes |
+| `wpmcp/skill-sync` | `wpmcp-skill-sync` | Check/apply the signed community feed; status, diff, install | yes (apply) |
 | `wpmcp/site-health` | `wpmcp-site-health` | Scored diagnostics, six sections | — |
 | `wpmcp/restore` | `wpmcp-restore` | List/restore/prune rollback copies | yes |
 
@@ -155,7 +156,9 @@ New playbooks can be written by the agent itself with `wpmcp/skill-write`. They 
 in `wp-content/wpmcp-skills/`, survive plugin updates, and are available to every
 future client immediately. A site playbook with the same slug as a bundled one
 shadows it, so an agent can override a shipped playbook without losing the original.
-`list-skills` reports `source` as `bundled` or `site`.
+`list-skills` reports `source` as `bundled`, `site`, or a feed id such as
+`community`, plus `feed`, `author`, `version` and `updated` when a feed supplies
+them.
 
 An existing install that edited playbooks inside the plugin folder has them moved to
 `wp-content/wpmcp-skills/` once, on the first request after upgrading. The move uses
@@ -169,6 +172,108 @@ term, and tells the agent to continue with the core abilities and save what it
 learns with `skill-write`. It no longer offers loosely related playbooks that look
 like an answer.
 
+### Community feed
+
+The library grows from the signed feed at
+[`github.com/hidden0705/wp-mcp-skills`](https://github.com/hidden0705/wp-mcp-skills).
+Every install checks it twice a day (WP-Cron event `wpmcp_skill_feed_sync`, every
+12 hours) and downloads only the playbooks whose sha256 changed. On hosts that set
+`DISABLE_WP_CRON`, the check runs on the first MCP request after the interval
+instead, so the feed still updates without a system cron. Nothing is
+installed until all of these pass:
+
+- the manifest's RSA-3072 signature, checked against the public key compiled into
+  the plugin;
+- each file's sha256 and byte count;
+- the slug and path (no traversal, `.md` only);
+- `min_plugin`, so an older plugin refuses a feed that expects newer code.
+
+Precedence is `site` > team feed > `community` > `bundled`. A site playbook always
+wins. A community playbook cannot replace a bundled slug unless its manifest entry
+says `override: true`, so the shipped instructions cannot be silently rewritten.
+
+`wpmcp/skill-sync` exposes the same engine: `action=status` (default) shows last
+check, last apply, installed count and the last error; `action=check` verifies the
+signature and lists new/updated/removed playbooks without writing; `action=apply`
+installs the changes. Replaced and removed files are backed up first and can be
+restored with `wpmcp/restore`.
+
+Kill switch:
+
+```php
+define( 'WPMCP_SKILLS_FEED', false );
+```
+
+Add a private or team feed (higher `priority` wins over the community feed's 10):
+
+```php
+add_filter( 'wpmcp_skill_feeds', function ( $feeds ) {
+	$feeds['team'] = array(
+		'id'         => 'team',
+		'label'      => 'Acme team playbooks',
+		'manifest'   => 'https://example.com/uploads/acme-feed/manifest.json',
+		'signature'  => 'https://example.com/uploads/acme-feed/manifest.json.sig',
+		'public_key' => file_get_contents( '/path/to/acme-public.pem' ),
+		'priority'   => 20,
+		'auto'       => true,
+	);
+	return $feeds;
+} );
+```
+
+An unsigned feed is refused unless the site sets `allow_unsigned => true` on that
+specific feed, which is a deliberate trust decision.
+
+Community playbooks are reference material written by other sites. `agent-context`
+tells the agent to check their commands against this site, never follow a playbook
+that skips a backup or sends credentials away, and to report a bad playbook through
+the repository's security policy.
+
+### Publishing a playbook from a site
+
+A playbook written on a live site is the most useful kind, because it records a
+real trap. Send it back with the `wp wpmcp export` command:
+
+```bash
+wp wpmcp export --author=your-handle --dry-run   # report only
+wp wpmcp export --author=your-handle             # write wp-content/wpmcp-export/
+```
+
+The command reads `wp-content/wpmcp-skills/`, and for every playbook it:
+
+- **scrubs the site out of the text**: the domain and host become `example.com`,
+  every email becomes `admin@example.com`, and absolute paths become
+  `/path/to/wordpress/...`;
+- **refuses a file that looks like it contains a secret** — private key, GitHub,
+  Stripe, AWS, Slack or Google API token, or a hard-coded password — and names the
+  reason in a warning;
+- **writes the front matter the community repository expects** (`title`, `category`,
+  `summary`, `author`, `license: CC-BY-4.0`, `updated`, `version`);
+- **skips a slug that already exists in the bundled library** unless you pass
+  `--allow-override`, which also writes `override: true`;
+- enforces the community body limits (200–12,000 bytes) so CI does not reject the
+  file later.
+
+Options: `--slug=<slug>` for one playbook, `--out=<dir>` to choose the directory,
+`--force` to overwrite an earlier export, `--dry-run` to see the plan.
+
+The files are only candidates. Review the scrub result yourself, then:
+
+```bash
+git clone https://github.com/hidden0705/wp-mcp-skills
+cp wp-content/wpmcp-export/*.md wp-mcp-skills/skills/
+cd wp-mcp-skills && python3 scripts/validate.py
+git checkout -b playbook/my-topic
+git add skills && git commit -m "docs: add my-topic playbook"
+gh pr create --fill
+```
+
+CI validates front matter, size, secrets, emails and destructive commands. A
+maintainer reviews the playbook for correctness and prompt injection; merging to
+`main` rebuilds and re-signs the feed, and every install picks it up on its next
+sync. Nothing is published automatically from an install, and a site playbook
+always wins over the feed copy of the same slug.
+
 ## Safety model
 
 | Control | Behaviour |
@@ -181,6 +286,7 @@ like an answer.
 | Backups | Every file write/delete and every Elementor write keeps a rollback copy |
 | Atomic writes | Temp file + `rename()`; Elementor writes are read back before success is reported |
 | Audit log | Last 200 `wpmcp/*` calls in a non-autoloaded option, secret-like keys redacted |
+| Signed feed | RSA-3072 manifest signature, sha256 + byte count per file, signed key shipped in the plugin, tombstones for removals |
 
 ### Configuration
 
@@ -195,6 +301,8 @@ like an answer.
 | `wpmcp_pagespeed_api_key` filter | option value | Override the key at runtime |
 | `wpmcp_extra_tool_namespaces` filter | `['elementor/', 'core/']` | Extra ability namespaces on the server |
 | `WPMCP_REMOVE_DATA` | `false` | Let `uninstall.php` delete the plugin's options |
+| `WPMCP_SKILLS_FEED` | `true` | Set `false` to disable every skill feed |
+| `wpmcp_skill_feeds` filter | official community feed | Add a private/team feed; higher `priority` wins |
 
 Read-only mode for a live site:
 
