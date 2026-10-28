@@ -11,6 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Internationalise the remaining agent-facing descriptions.
 
+## [2.7.1] - 2026-10-28
+
+### Fixed
+
+- The lazy feed sync ran on `rest_api_init`, so an unauthenticated request to the
+  MCP endpoint could make the site fetch and install a feed. It now runs on
+  `wp_before_execute_ability` for `wpmcp/*` abilities, after the ability's
+  permission callback has passed. The 12-hour interval and the one-hour throttle
+  are unchanged.
+
 ## [2.7.0] - 2026-10-28
 
 ### Added

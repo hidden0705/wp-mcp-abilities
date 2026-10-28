@@ -4,7 +4,7 @@ Tags: mcp, ai, wp-cli, elementor, woocommerce
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 8.0
-Stable tag: 2.7.0
+Stable tag: 2.7.1
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -116,10 +116,15 @@ None. The plugin has no admin screens; it is configured with constants and filte
 
 == Changelog ==
 
+= 2.7.1 =
+* Fixed: the lazy feed sync now runs before an MCP ability executes, after its
+  permission check, instead of on `rest_api_init`. An unauthenticated request can
+  no longer make the site fetch or write a feed.
+
 = 2.7.0 =
 * Added: signed community skill feed (github.com/hidden0705/wp-mcp-skills). Every
-  install checks it twice a day (or on the first MCP request when WP-Cron is
-  disabled), verifies an RSA-3072 manifest signature plus a
+  install checks it twice a day (or before the first MCP ability call when
+  WP-Cron is disabled), verifies an RSA-3072 manifest signature plus a
   sha256 and byte count per file, and backs up every replaced or removed playbook.
 * Added: `wpmcp/skill-sync` with status, check and apply, plus per-feed state and
   last error in `agent-context`.
@@ -166,6 +171,9 @@ None. The plugin has no admin screens; it is configured with constants and filte
 Internal releases, not publicly distributed.
 
 == Upgrade Notice ==
+
+= 2.7.1 =
+Security hardening for the feed sync trigger. No configuration change required.
 
 = 2.7.0 =
 The community feed is on by default and uses WP-Cron. No configuration change is

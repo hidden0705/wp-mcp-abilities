@@ -3,7 +3,7 @@
  * Plugin Name:       WP MCP Abilities
  * Plugin URI:        https://github.com/hidden0705/wp-mcp-abilities
  * Description:       Administrator-level MCP abilities for WordPress: WP-CLI, REST, files with rollback, Elementor builder, site health, and 46 skill playbooks.
- * Version:           2.7.0
+ * Version:           2.7.1
  * Requires at least: 6.9
  * Requires PHP:      8.0
  * Requires Plugins:  mcp-adapter
@@ -29,7 +29,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-const WPMCP_VERSION = '2.7.0';
+const WPMCP_VERSION = '2.7.1';
 
 /**
  * The abilities this plugin registers, in tool-list order.
@@ -892,26 +892,7 @@ function wpmcp_skill_feed_needs_sync() {
 	return false;
 }
 
-/**
- * True when the current request is the MCP endpoint.
- *
- * WP-Cron is disabled on some hosts (`DISABLE_WP_CRON`), which would otherwise
- * mean the feed never updates. Those sites sync on the first MCP request after
- * the interval instead, so the only agent that pays the latency is the one that
- * was going to read a playbook anyway.
- *
- * @return bool
- */
-function wpmcp_skill_feed_is_mcp_request() {
-	$route = isset( $_GET['rest_route'] ) ? (string) wp_unslash( $_GET['rest_route'] ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
-	if ( false !== strpos( $route, '/mcp/' ) ) {
-		return true;
-	}
-	$uri = isset( $_SERVER['REQUEST_URI'] ) ? (string) wp_unslash( $_SERVER['REQUEST_URI'] ) : '';
-	return false !== strpos( $uri, '/wp-json/mcp/' );
-}
-
-/** Run a stale feed sync on an MCP request, at most once an hour. */
+/** Run a stale feed sync before an MCP ability, at most once an hour. */
 function wpmcp_skill_feed_maybe_sync() {
 	if ( ! wpmcp_skill_feeds() || ! wpmcp_skill_feed_needs_sync() ) {
 		return;
@@ -922,13 +903,17 @@ function wpmcp_skill_feed_maybe_sync() {
 	set_transient( 'wpmcp_skill_feed_tick', time(), HOUR_IN_SECONDS );
 	wpmcp_skill_feed_cron();
 }
+// Run on the ability hook, not rest_api_init: this only fires after the
+// ability's permission callback passed, so an unauthenticated request cannot
+// make the site fetch or write a feed.
 add_action(
-	'rest_api_init',
-	function () {
-		if ( wpmcp_skill_feed_is_mcp_request() ) {
+	'wp_before_execute_ability',
+	function ( $name ) {
+		if ( 0 === strpos( (string) $name, 'wpmcp/' ) ) {
 			wpmcp_skill_feed_maybe_sync();
 		}
-	}
+	},
+	5
 );
 
 /** Remove the cron event when the plugin is deactivated. */
@@ -973,7 +958,7 @@ function wpmcp_skill_feed_status() {
 			'hook'          => 'wpmcp_skill_feed_sync',
 			'interval'      => 'twicedaily (12 hours)',
 			'next'          => $next ? gmdate( 'c', (int) $next ) : '',
-			'wp_cron'       => defined( 'DISABLE_WP_CRON' ) && DISABLE_WP_CRON ? 'disabled (syncs on the next MCP request after 12 hours)' : 'enabled',
+			'wp_cron'       => defined( 'DISABLE_WP_CRON' ) && DISABLE_WP_CRON ? 'disabled (syncs on the next MCP ability call after 12 hours)' : 'enabled',
 			'fallback'      => 'MCP requests',
 		),
 		'feeds'       => $feeds,

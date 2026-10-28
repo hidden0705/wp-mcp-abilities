@@ -178,7 +178,7 @@ The library grows from the signed feed at
 [`github.com/hidden0705/wp-mcp-skills`](https://github.com/hidden0705/wp-mcp-skills).
 Every install checks it twice a day (WP-Cron event `wpmcp_skill_feed_sync`, every
 12 hours) and downloads only the playbooks whose sha256 changed. On hosts that set
-`DISABLE_WP_CRON`, the check runs on the first MCP request after the interval
+`DISABLE_WP_CRON`, the check runs before the first MCP ability call after the interval
 instead, so the feed still updates without a system cron. Nothing is
 installed until all of these pass:
 
