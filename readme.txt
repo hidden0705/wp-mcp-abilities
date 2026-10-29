@@ -8,7 +8,7 @@ Stable tag: 2.8.0
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Administrator-level MCP abilities for WordPress: REST, files with rollback, Elementor builder, site health, optional WP-CLI, client discovery, 46 bundled skill playbooks and a signed community feed.
+Administrator-level MCP tools for AI agents: REST, files with rollback, Elementor, optional WP-CLI, site health and 46 skill playbooks.
 
 == Description ==
 
@@ -105,15 +105,47 @@ for that path.
 Yes. Add `define( 'WPMCP_READONLY', true );` to `wp-config.php`, or return true from
 the `wpmcp_readonly` filter.
 
-= Is this on WordPress.org? =
+= Does this work on managed WordPress hosting? =
 
-No. The plugin grants administrator-level code execution by design, which is outside
-the WordPress.org plugin directory guidelines. Releases are distributed from the
-project repository.
+It needs the `mcp-adapter` plugin and an HTTPS site that allows Application Password
+authentication and the REST API. Most managed hosts allow both. A host that blocks
+`/wp-json/` or disables Application Passwords will not work.
 
-== Screenshots ==
+= Where do I report bugs or security issues? =
 
-None. The plugin has no admin screens; it is configured with constants and filters.
+Bugs and feature requests: https://github.com/hidden0705/wp-mcp-abilities/issues
+
+Security reports: use the private vulnerability reporting form on the repository's
+Security tab. Do not open a public issue for a vulnerability.
+
+== External services ==
+
+= Community skill feed (GitHub) =
+
+The official feed is fetched from
+`https://github.com/hidden0705/wp-mcp-skills/releases/download/feed/manifest.json`,
+and the playbooks it lists are downloaded from `raw.githubusercontent.com`. The
+request sends the plugin version and the site URL in its User-Agent header; no other
+site data is sent. The manifest is public and signed with RSA-3072, and every
+playbook is checked against a sha256 hash before it is written. The feed is checked
+at most twice a day and can be disabled with
+`define( 'WPMCP_SKILLS_FEED', false );`.
+
+= Google PageSpeed Insights =
+
+The `wpmcp/audit-url` ability sends the URL being audited to
+`https://www.googleapis.com/pagespeedonline/v5/runPagespeed`. Without a configured
+API key, Google applies its shared anonymous quota. The ability falls back to local
+measurements when Google does not answer.
+
+= URLs supplied by the user =
+
+`wpmcp/fetch-page` and `wpmcp/media-import` fetch the URL an administrator passes to
+them; no other data is sent.
+
+GitHub privacy statement: https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement
+
+Google APIs terms of service: https://developers.google.com/terms
 
 == Changelog ==
 
@@ -124,6 +156,9 @@ None. The plugin has no admin screens; it is configured with constants and filte
   placeholders; public payloads carry no secrets.
 * Added: `wpmcp/connection-info` ability and a `connection` block in
   `agent-context`.
+* Changed: prepared for WordPress.org distribution. The `Update URI` header is
+  removed so the directory can deliver updates, and the readme documents the
+  external services used by the feed, the PageSpeed audit and URL imports.
 
 = 2.7.1 =
 * Fixed: the lazy feed sync now runs before an MCP ability executes, after its

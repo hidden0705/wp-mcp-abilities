@@ -13,7 +13,6 @@
  * License URI:       https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain:       wp-mcp-abilities
  * Domain Path:       /languages
- * Update URI:        false
  *
  * @package WP MCP Abilities
  * @copyright Copyright (c) 2026 hidden0705
