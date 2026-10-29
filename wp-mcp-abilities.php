@@ -1,6 +1,6 @@
 <?php
 /**
- * Plugin Name:       MCP Abilities
+ * Plugin Name:       WP MCP Abilities
  * Plugin URI:        https://github.com/hidden0705/wp-mcp-abilities
  * Description:       Administrator-level MCP abilities for WordPress: WP-CLI, REST, files with rollback, Elementor builder, site health, and 46 skill playbooks.
  * Version:           2.8.0
@@ -11,10 +11,11 @@
  * Author URI:        https://github.com/hidden0705
  * License:           GPL-2.0-or-later
  * License URI:       https://www.gnu.org/licenses/gpl-2.0.html
- * Text Domain:       mcp-abilities
+ * Text Domain:       wp-mcp-abilities
  * Domain Path:       /languages
+ * Update URI:        false
  *
- * @package MCP Abilities
+ * @package WP MCP Abilities
  * @copyright Copyright (c) 2026 hidden0705
  * @license   GPL-2.0-or-later
  *
@@ -452,10 +453,10 @@ function wpmcp_skill_feed_validate_manifest( $manifest ) {
 		return new WP_Error( 'wpmcp_feed_json', 'The feed manifest is not a JSON object.' );
 	}
 	if ( ! isset( $manifest['schema'] ) || WPMCP_SKILLS_FEED_SCHEMA !== (int) $manifest['schema'] ) {
-		return new WP_Error( 'wpmcp_feed_schema', 'Unsupported feed schema. Update MCP Abilities.' );
+		return new WP_Error( 'wpmcp_feed_schema', 'Unsupported feed schema. Update WP MCP Abilities.' );
 	}
 	if ( ! empty( $manifest['min_plugin'] ) && version_compare( WPMCP_VERSION, (string) $manifest['min_plugin'], '<' ) ) {
-		return new WP_Error( 'wpmcp_feed_plugin_old', 'This feed needs MCP Abilities ' . $manifest['min_plugin'] . ' or newer; this site runs ' . WPMCP_VERSION . '.' );
+		return new WP_Error( 'wpmcp_feed_plugin_old', 'This feed needs WP MCP Abilities ' . $manifest['min_plugin'] . ' or newer; this site runs ' . WPMCP_VERSION . '.' );
 	}
 	$base = (string) ( $manifest['base'] ?? '' );
 	if ( '' === $base ) {
@@ -990,7 +991,7 @@ function wpmcp_skill_feed_agent_status() {
 
 /** Translations live in languages/; GitHub releases are not served by WordPress.org. */
 add_action( 'init', function () {
-	load_plugin_textdomain( 'mcp-abilities', false, dirname( plugin_basename( __FILE__ ) ) . '/languages' );
+	load_plugin_textdomain( 'wp-mcp-abilities', false, dirname( plugin_basename( __FILE__ ) ) . '/languages' );
 } );
 
 /**
