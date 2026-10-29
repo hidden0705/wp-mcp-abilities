@@ -29,6 +29,7 @@ AI client  ──MCP over HTTPS──>  mcp-adapter  ──>  WP MCP Abilities  
 | Diagnostics | Scored site health, PHP error tails, cron, autoload size, security checks |
 | Content | Fetch rendered HTML, import media from a URL, PageSpeed/local audit |
 | Knowledge | A 46-playbook WordPress/WooCommerce/Elementor library, searchable by agents |
+| Connect | Public discovery manifest: endpoint, auth and client templates, no secrets |
 
 ## Requirements
 
@@ -81,14 +82,30 @@ Generate the header value with:
 printf '%s' 'admin:xxxx xxxx xxxx xxxx xxxx xxxx' | base64
 ```
 
+### Zero-guess discovery
+
+A client that only knows the domain can read the manifest first:
+
+```
+GET https://example.com/.well-known/wpmcp.json
+```
+
+It returns the MCP endpoint in both permalink forms, transport and protocol
+version, auth requirements, onboarding steps and ready-to-paste client
+templates with placeholders. No secrets, versions or admin paths are exposed.
+The same payload is available at `/wp-json/wpmcp/v1/connect` and
+`/?wpmcp_discovery=1` (plain-permalink fallback); a connected agent can call
+`wpmcp/connection-info` for the operator-level copy.
+
 ## Tools
 
 All abilities require `manage_options`. Names map to MCP tools by replacing `/`
-with `-`. Fourteen are always registered; `wpmcp/wpcli` only when the site opts in.
+with `-`. Fifteen are always registered; `wpmcp/wpcli` only when the site opts in.
 
 | Ability | MCP tool | Purpose | Writes |
 | --- | --- | --- | --- |
 | `wpmcp/agent-context` | `wpmcp-agent-context` | Site profile, stack, ability catalog, skill index, warnings. Start here. | — |
+| `wpmcp/connection-info` | `wpmcp-connection-info` | Endpoint, auth, discovery manifest and client templates for onboarding | — |
 | `wpmcp/rest-request` | `wpmcp-rest-request` | Any REST route, as the current user | yes |
 | `wpmcp/wpcli` | `wpmcp-wpcli` | WP-CLI through the real binary — **only when `WPMCP_ENABLE_WPCLI` is true** | yes |
 | `wpmcp/files` | `wpmcp-files` | `wp-content` file CRUD + search, with backups | yes |

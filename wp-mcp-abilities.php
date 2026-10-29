@@ -3,7 +3,7 @@
  * Plugin Name:       WP MCP Abilities
  * Plugin URI:        https://github.com/hidden0705/wp-mcp-abilities
  * Description:       Administrator-level MCP abilities for WordPress: WP-CLI, REST, files with rollback, Elementor builder, site health, and 46 skill playbooks.
- * Version:           2.7.1
+ * Version:           2.8.0
  * Requires at least: 6.9
  * Requires PHP:      8.0
  * Requires Plugins:  mcp-adapter
@@ -29,7 +29,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-const WPMCP_VERSION = '2.7.1';
+const WPMCP_VERSION = '2.8.0';
 
 /**
  * The abilities this plugin registers, in tool-list order.
@@ -42,6 +42,7 @@ const WPMCP_VERSION = '2.7.1';
 function wpmcp_ability_names() {
 	return array(
 		'wpmcp/agent-context',
+		'wpmcp/connection-info',
 		'wpmcp/rest-request',
 		'wpmcp/wpcli',
 		'wpmcp/files',
@@ -2395,6 +2396,147 @@ function wpmcp_el_section_pair( &$taken ) {
 	);
 }
 
+/**
+ * MCP endpoint URLs in both permalink forms, plus the discovery manifest.
+ *
+ * The ?rest_route= form connects even when pretty permalinks are off, and the
+ * server slug can be swapped with the wpmcp_mcp_server_slug filter when a site
+ * registers its own adapter server.
+ *
+ * @return array
+ */
+function wpmcp_mcp_endpoints() {
+	$server = (string) apply_filters( 'wpmcp_mcp_server_slug', 'mcp-adapter-default-server' );
+	$server = trim( $server, '/' );
+
+	return array(
+		'server'          => $server,
+		'wp_json'         => home_url( '/wp-json/mcp/' . $server ),
+		'rest_route'      => home_url( '/index.php?rest_route=/mcp/' . $server . '/' ),
+		'discovery'       => home_url( '/.well-known/wpmcp.json' ),
+		'discovery_plain' => home_url( '/?wpmcp_discovery=1' ),
+		'discovery_rest'  => home_url( '/wp-json/wpmcp/v1/connect' ),
+	);
+}
+
+/**
+ * Ready-to-paste client configurations with credential placeholders only.
+ *
+ * @param array $endpoints Result of wpmcp_mcp_endpoints().
+ * @return array
+ */
+function wpmcp_client_configs( $endpoints ) {
+	$server = array(
+		'type'    => 'remote',
+		'url'     => $endpoints['wp_json'],
+		'oauth'   => false,
+		'headers' => array( 'Authorization' => 'Basic <base64(username:app-password)>' ),
+	);
+
+	return array(
+		'opencode' => array(
+			'file' => 'opencode.json -> mcp.servers',
+			'json' => array( 'mcp' => array( 'servers' => array( 'my-site' => $server ) ) ),
+		),
+		'claude'   => array(
+			'file' => 'claude_desktop_config.json -> mcpServers',
+			'json' => array( 'mcpServers' => array( 'my-site' => $server ) ),
+		),
+		'curl'     => 'curl -sS -X POST "' . $endpoints['wp_json'] . '" -H "Authorization: Basic <base64(username:app-password)>" -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" -d \'{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"probe","version":"1.0"}}}\'',
+	);
+}
+
+/**
+ * Connection manifest: everything a client needs to connect, no secrets.
+ *
+ * @param bool $public Drop operator-only detail (versions, admin URLs, client templates).
+ * @return array
+ */
+function wpmcp_connection_payload( $public = false ) {
+	$endpoints = wpmcp_mcp_endpoints();
+	$payload   = array(
+		'ok'        => true,
+		'product'   => 'wp-mcp-abilities',
+		'plugin'    => array( 'version' => WPMCP_VERSION ),
+		'site'      => array(
+			'name'  => (string) get_option( 'blogname', '' ),
+			'url'   => (string) home_url( '/' ),
+			'https' => is_ssl(),
+		),
+		'mcp'       => array(
+			'transport'        => 'streamable-http',
+			'protocol_version' => '2025-11-25',
+			'server'           => $endpoints['server'],
+			'endpoint'         => $endpoints['wp_json'],
+			'endpoint_plain'   => $endpoints['rest_route'],
+			'auth'             => array(
+				'type'   => 'application-password',
+				'scheme' => 'Basic',
+				'role'   => 'administrator (manage_options)',
+			),
+			'accept'           => 'application/json, text/event-stream',
+			'protocol_header'  => 'MCP-Protocol-Version',
+		),
+		'discovery' => array(
+			'url'   => $endpoints['discovery'],
+			'plain' => $endpoints['discovery_plain'],
+			'rest'  => $endpoints['discovery_rest'],
+		),
+		'steps'     => array(
+			'Create an Application Password for an administrator account (Users -> Profile -> Application Passwords).',
+			'Build the Authorization header: Basic base64("username:application password"), spaces removed from the password.',
+			'Add the server to your MCP client: url = mcp.endpoint, oauth off, header Authorization = that value. Use mcp.endpoint_plain when the site has no pretty permalinks.',
+			'Send initialize, then tools/list. Send MCP-Protocol-Version with the negotiated version on every request after initialize.',
+		),
+	);
+
+	if ( ! $public ) {
+		$payload['site']['wp_version']    = (string) get_bloginfo( 'version' );
+		$payload['site']['php_version']   = PHP_VERSION;
+		$payload['mcp']['auth']['create'] = admin_url( 'profile.php#application-passwords-section' );
+		$payload['clients']               = wpmcp_client_configs( $endpoints );
+	}
+
+	$filter = $public ? 'wpmcp_discovery_payload' : 'wpmcp_connection_payload';
+	return (array) apply_filters( $filter, $payload );
+}
+
+/**
+ * Serve /.well-known/wpmcp.json without a REST round trip.
+ *
+ * The rewrite rule merges at runtime, so an existing install does not need a
+ * permalink flush; ?wpmcp_discovery=1 is the plain-permalink fallback.
+ */
+add_action( 'init', function () {
+	add_rewrite_rule( '^\.well-known/wpmcp\.json$', 'index.php?wpmcp_discovery=1', 'top' );
+} );
+
+add_filter( 'query_vars', function ( $vars ) {
+	$vars[] = 'wpmcp_discovery';
+	return $vars;
+} );
+
+add_action( 'template_redirect', function () {
+	if ( 1 !== (int) get_query_var( 'wpmcp_discovery' ) ) {
+		return;
+	}
+	nocache_headers();
+	header( 'Content-Type: application/json; charset=utf-8' );
+	header( 'Access-Control-Allow-Origin: *' );
+	echo wp_json_encode( wpmcp_connection_payload( true ), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES );
+	exit;
+} );
+
+add_action( 'rest_api_init', function () {
+	register_rest_route( 'wpmcp/v1', '/connect', array(
+		'methods'             => 'GET',
+		'callback'            => function () {
+			return new WP_REST_Response( wpmcp_connection_payload( true ), 200 );
+		},
+		'permission_callback' => '__return_true',
+	) );
+} );
+
 add_action( 'wp_abilities_api_categories_init', function () {
 	if ( function_exists( 'wp_register_ability_category' ) ) {
 		wp_register_ability_category( 'wpmcp', array(
@@ -2425,6 +2567,43 @@ add_action( 'wp_abilities_api_init', function () {
 			),
 		);
 	};
+
+	// ---------------------------------------------------------------------
+	// 0. Connection discovery: everything a client needs to connect.
+	// ---------------------------------------------------------------------
+	wp_register_ability( 'wpmcp/connection-info', array(
+		'label'        => 'Connection Info',
+		'description'  => 'Everything a client needs to connect to this site over MCP: endpoint URLs in both permalink forms, transport and protocol version, auth requirements, discovery manifest URL, onboarding steps, and ready-to-paste client configurations with credential placeholders. Read-only, returns no secrets.',
+		'category'     => 'wpmcp',
+		'input_schema' => array(
+			'type'       => 'object',
+			'properties' => array(
+				'include_clients' => array( 'type' => 'boolean', 'description' => 'Include ready-to-paste client configuration templates. Default true.' ),
+			),
+		),
+		'output_schema' => array(
+			'type'       => 'object',
+			'properties' => array(
+				'ok'        => array( 'type' => 'boolean' ),
+				'product'   => array( 'type' => 'string' ),
+				'plugin'    => array( 'description' => 'Plugin version for client compatibility checks.' ),
+				'site'      => array( 'description' => 'Site name, URL, versions and HTTPS state.' ),
+				'mcp'       => array( 'description' => 'Endpoint, transport, protocol version and auth requirements.' ),
+				'discovery' => array( 'description' => 'Public discovery manifest URLs (well-known and REST).' ),
+				'steps'     => array( 'description' => 'Ordered onboarding steps for a new client.' ),
+				'clients'   => array( 'description' => 'Client configuration templates with credential placeholders only.' ),
+			),
+		),
+		'execute_callback' => function ( $input ) {
+			$payload = wpmcp_connection_payload( false );
+			if ( isset( $input['include_clients'] ) && empty( $input['include_clients'] ) ) {
+				unset( $payload['clients'] );
+			}
+			return $payload;
+		},
+		'permission_callback' => $admin_gate,
+		'meta'                => $annotations( 'MCP Connection Info', true, false, true ),
+	) );
 
 	// ---------------------------------------------------------------------
 	// 1. Generic REST proxy.
@@ -3923,6 +4102,7 @@ add_action( 'wp_abilities_api_init', function () {
 				'ok'         => array( 'type' => 'boolean' ),
 				'readonly'   => array( 'type' => 'boolean' ),
 				'site'       => array( 'description' => 'Versions, URLs, theme, locale, permalinks, builder state.' ),
+				'connection' => array( 'description' => 'How to connect other MCP clients: endpoint URLs, discovery manifest, auth and app-password link.' ),
 				'stack'      => array( 'description' => 'Active plugins with name and version.' ),
 				'abilities'  => array( 'description' => 'Ability name => label, when to use, readonly, destructive.' ),
 				'skills'     => array( 'description' => 'slug => title, category, summary, source.' ),
@@ -4020,6 +4200,17 @@ add_action( 'wp_abilities_api_init', function () {
 				);
 			}
 
+			$endpoints  = wpmcp_mcp_endpoints();
+			$connection = array(
+				'endpoint'         => $endpoints['wp_json'],
+				'endpoint_plain'   => $endpoints['rest_route'],
+				'discovery'        => $endpoints['discovery'],
+				'discovery_plain'  => $endpoints['discovery_plain'],
+				'auth'             => 'application password (administrator); Basic auth header',
+				'app_password_url' => admin_url( 'profile.php#application-passwords-section' ),
+				'details'          => 'wpmcp/connection-info',
+			);
+
 			$catalog = array();
 			if ( $with_abilities && function_exists( 'wp_get_ability' ) ) {
 				foreach ( wpmcp_ability_names() as $name ) {
@@ -4054,6 +4245,7 @@ add_action( 'wp_abilities_api_init', function () {
 				'ok'         => true,
 				'readonly'   => wpmcp_is_readonly(),
 				'site'       => $site,
+				'connection' => $connection,
 				'stack'      => $stack,
 				'abilities'  => $catalog,
 				'skills'     => $skills,
@@ -4066,6 +4258,7 @@ add_action( 'wp_abilities_api_init', function () {
 					'Export the database with wpmcp/wpcli "db export" (when WP-CLI is enabled) before schema, plugin or bulk content changes.',
 					'Prefer wpmcp/rest-request for CRUD; use wpmcp/wpcli, when enabled, for what REST cannot reach (menus, widgets, options, transients, search-replace).',
 					'Every wpmcp/files write and delete keeps a rollback copy: list them with wpmcp/restore action=list.',
+					'Point other MCP clients at this site with wpmcp/connection-info; the public manifest is at /.well-known/wpmcp.json, with ?wpmcp_discovery=1 as the plain-permalink fallback.',
 					'Verify front-end output with wpmcp/fetch-page after any change, and purge LiteSpeed (wpmcp/wpcli "litespeed-purge all" when enabled).',
 					'Never store credentials in content, options, files or logs. The audit log records ability calls, not secrets.',
 				),

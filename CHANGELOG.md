@@ -11,6 +11,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Internationalise the remaining agent-facing descriptions.
 
+## [2.8.0] - 2026-10-29
+
+### Added
+
+- **Zero-guess client onboarding.** Every install now answers "how do I connect
+  to this site?" itself: `GET /.well-known/wpmcp.json` (plain-permalink fallback
+  `?wpmcp_discovery=1`, REST form `/wp-json/wpmcp/v1/connect`) returns the MCP
+  endpoint in both permalink forms, transport and negotiated protocol version,
+  auth requirements, onboarding steps and ready-to-paste client templates with
+  credential placeholders. Public payloads carry no secrets, versions or admin
+  detail. Filters: `wpmcp_discovery_payload`, `wpmcp_connection_payload`,
+  `wpmcp_mcp_server_slug`.
+- `wpmcp/connection-info` (read-only) returns the full manifest to a connected
+  agent, including WordPress/PHP versions and the app-password link.
+- `agent-context` now includes a compact `connection` block so a new agent knows
+  the endpoint and discovery URL without a second call.
+
 ## [2.7.1] - 2026-10-28
 
 ### Fixed

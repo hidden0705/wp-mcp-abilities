@@ -4,15 +4,15 @@ Tags: mcp, ai, wp-cli, elementor, woocommerce
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 8.0
-Stable tag: 2.7.1
+Stable tag: 2.8.0
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Administrator-level MCP abilities for WordPress: REST, files with rollback, Elementor builder, site health, optional WP-CLI, 46 bundled skill playbooks and a signed community feed.
+Administrator-level MCP abilities for WordPress: REST, files with rollback, Elementor builder, site health, optional WP-CLI, client discovery, 46 bundled skill playbooks and a signed community feed.
 
 == Description ==
 
-WP MCP Abilities extends the official `mcp-adapter` plugin with 15 administrator-level
+WP MCP Abilities extends the official `mcp-adapter` plugin with 16 administrator-level
 abilities, each registered as a first-class MCP tool with its full input schema. An AI
 client calls a tool once instead of walking the adapter's discover → info → execute
 chain. There is no relay service and no call limit: the client talks straight to your
@@ -37,6 +37,7 @@ default: enable it with `define( 'WPMCP_ENABLE_WPCLI', true );`.
 * **Skill sync** – check and apply the signed community feed, with signature and hash checks.
 * **Site health** – scored diagnostics across six sections.
 * **Restore** – list, restore and prune the automatic rollback copies.
+* **Connection info** – endpoint, auth, discovery manifest and client templates for onboarding.
 
 = Third-party abilities =
 
@@ -71,9 +72,9 @@ Read-only mode is available for inspection-only agents.
    through Plugins → Add New → Upload Plugin.
 3. Activate **WP MCP Abilities**.
 4. Create an application password under Users → Profile.
-5. Connect your MCP client to `https://example.com/wp-json/mcp/mcp-adapter-default-server`
-   (or `?rest_route=/mcp/mcp-adapter-default-server/` with plain permalinks) using
-   HTTP Basic auth.
+5. Read `https://example.com/.well-known/wpmcp.json` (or `/wp-json/wpmcp/v1/connect`,
+   or `/?wpmcp_discovery=1` with plain permalinks) for the endpoint and client
+   templates, then connect with HTTP Basic auth.
 
 == Frequently Asked Questions ==
 
@@ -115,6 +116,14 @@ project repository.
 None. The plugin has no admin screens; it is configured with constants and filters.
 
 == Changelog ==
+
+= 2.8.0 =
+* Added: zero-guess client onboarding. `/.well-known/wpmcp.json` (plus
+  `/wp-json/wpmcp/v1/connect` and `?wpmcp_discovery=1`) returns the MCP endpoint
+  in both permalink forms, protocol, auth requirements and client templates with
+  placeholders; public payloads carry no secrets.
+* Added: `wpmcp/connection-info` ability and a `connection` block in
+  `agent-context`.
 
 = 2.7.1 =
 * Fixed: the lazy feed sync now runs before an MCP ability executes, after its
