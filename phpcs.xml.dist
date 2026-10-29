@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
-<ruleset name="WP MCP Abilities">
-	<description>WordPress coding standards for WP MCP Abilities.</description>
+<ruleset name="MCP Abilities">
+	<description>WordPress coding standards for MCP Abilities.</description>
 
 	<file>wp-mcp-abilities.php</file>
 	<file>uninstall.php</file>

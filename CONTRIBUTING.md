@@ -1,4 +1,4 @@
-# Contributing to WP MCP Abilities
+# Contributing to MCP Abilities
 
 Thanks for taking the time to contribute. This project deals with administrator-level
 WordPress operations, so small mistakes have large consequences. Please read this

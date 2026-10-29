@@ -1,4 +1,4 @@
-=== WP MCP Abilities ===
+=== MCP Abilities ===
 Contributors: hidden0705
 Tags: mcp, ai, wp-cli, elementor, woocommerce
 Requires at least: 6.9
@@ -12,7 +12,7 @@ Administrator-level MCP tools for AI agents: REST, files with rollback, Elemento
 
 == Description ==
 
-WP MCP Abilities extends the official `mcp-adapter` plugin with 16 administrator-level
+MCP Abilities extends the official `mcp-adapter` plugin with 16 administrator-level
 abilities, each registered as a first-class MCP tool with its full input schema. An AI
 client calls a tool once instead of walking the adapter's discover → info → execute
 chain. There is no relay service and no call limit: the client talks straight to your
@@ -70,7 +70,7 @@ Read-only mode is available for inspection-only agents.
 1. Install and activate the `mcp-adapter` plugin.
 2. Upload the `wp-mcp-abilities` folder to `/wp-content/plugins/`, or install the ZIP
    through Plugins → Add New → Upload Plugin.
-3. Activate **WP MCP Abilities**.
+3. Activate **MCP Abilities**.
 4. Create an application password under Users → Profile.
 5. Read `https://example.com/.well-known/wpmcp.json` (or `/wp-json/wpmcp/v1/connect`,
    or `/?wpmcp_discovery=1` with plain permalinks) for the endpoint and client

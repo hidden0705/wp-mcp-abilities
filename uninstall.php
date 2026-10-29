@@ -1,6 +1,6 @@
 <?php
 /**
- * Uninstall routine for WP MCP Abilities.
+ * Uninstall routine for MCP Abilities.
  *
  * Data removal is opt-in. The plugin keeps rollback copies (wp-content/wpmcp-backups),
  * audit history and any skills an agent wrote, because those are recovery material.
@@ -12,7 +12,7 @@
  * Even then, only options created by this plugin are deleted. Files on disk are left
  * alone: backups and user skills are never removed by the uninstaller.
  *
- * @package WP MCP Abilities
+ * @package MCP Abilities
  */
 
 if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) {

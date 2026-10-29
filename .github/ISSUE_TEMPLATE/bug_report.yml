@@ -27,7 +27,7 @@ body:
   - type: input
     id: plugin-version
     attributes:
-      label: WP MCP Abilities version
+      label: MCP Abilities version
       placeholder: '2.4.0'
     validations:
       required: true

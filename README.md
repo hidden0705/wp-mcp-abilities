@@ -1,4 +1,4 @@
-# WP MCP Abilities
+# MCP Abilities
 
 [![CI](https://github.com/hidden0705/wp-mcp-abilities/actions/workflows/ci.yml/badge.svg)](https://github.com/hidden0705/wp-mcp-abilities/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/hidden0705/wp-mcp-abilities)](https://github.com/hidden0705/wp-mcp-abilities/releases)
@@ -15,7 +15,7 @@ meta-tool chain. No third-party bridge, no relay service, no call limits: the AI
 client talks straight to your site over HTTPS.
 
 ```
-AI client  ──MCP over HTTPS──>  mcp-adapter  ──>  WP MCP Abilities  ──>  WordPress
+AI client  ──MCP over HTTPS──>  mcp-adapter  ──>  MCP Abilities  ──>  WordPress
 ```
 
 ## What it adds
@@ -44,7 +44,7 @@ AI client  ──MCP over HTTPS──>  mcp-adapter  ──>  WP MCP Abilities  
 1. Install and activate `mcp-adapter`.
 2. Upload `wp-mcp-abilities.zip` under **Plugins → Add New → Upload Plugin**, or copy
    the `wp-mcp-abilities/` folder to `wp-content/plugins/`.
-3. Activate **WP MCP Abilities**.
+3. Activate **MCP Abilities**.
 4. Optional: enable WP-CLI by adding `define( 'WPMCP_ENABLE_WPCLI', true );` to
    `wp-config.php` (needed only for `wpmcp/wpcli`).
 5. Create an application password under **Users → Profile → Application Passwords**.
