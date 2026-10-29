@@ -2517,10 +2517,18 @@ add_filter( 'query_vars', function ( $vars ) {
 } );
 
 add_action( 'template_redirect', function () {
-	if ( 1 !== (int) get_query_var( 'wpmcp_discovery' ) ) {
+	$is_discovery = 1 === (int) get_query_var( 'wpmcp_discovery' );
+	if ( ! $is_discovery ) {
+		// Some hosts and firewalls drop dot-directories before the rewrite
+		// layer. Match the path directly so .well-known keeps working.
+		$path = (string) parse_url( (string) ( $_SERVER['REQUEST_URI'] ?? '' ), PHP_URL_PATH );
+		$is_discovery = (bool) preg_match( '#/\.well-known/wpmcp\.json$#', $path );
+	}
+	if ( ! $is_discovery ) {
 		return;
 	}
 	nocache_headers();
+	status_header( 200 );
 	header( 'Content-Type: application/json; charset=utf-8' );
 	header( 'Access-Control-Allow-Origin: *' );
 	echo wp_json_encode( wpmcp_connection_payload( true ), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES );
