@@ -1,0 +1,43 @@
+name: Feature request
+description: Suggest a new ability, action, or safety improvement.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What is the agent unable to do today?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Ability name, inputs, outputs, and whether it writes to the site.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Existing abilities, WP-CLI commands, or REST routes that could cover this.
+
+  - type: dropdown
+    id: writes
+    attributes:
+      label: Does it write to the site?
+      options:
+        - 'No — read-only'
+        - 'Yes — reversible with a backup'
+        - 'Yes — destructive, needs confirm: true'
+        - 'Not sure'
+    validations:
+      required: true
+
+  - type: textarea
+    id: safety
+    attributes:
+      label: Safety considerations
+      description: Paths, URLs, capabilities, rollback, rate limits.

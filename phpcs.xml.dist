@@ -1,0 +1,50 @@
+<?xml version="1.0"?>
+<ruleset name="WP MCP Abilities">
+	<description>WordPress coding standards for WP MCP Abilities.</description>
+
+	<file>wp-mcp-abilities.php</file>
+	<file>uninstall.php</file>
+	<exclude-pattern>*/vendor/*</exclude-pattern>
+	<exclude-pattern>*/node_modules/*</exclude-pattern>
+
+	<arg name="extensions" value="php"/>
+	<arg name="colors"/>
+	<arg value="sp"/>
+
+	<config name="minimum_supported_wp_version" value="6.9"/>
+	<config name="testVersion" value="8.0-"/>
+
+	<rule ref="WordPress-Extra">
+		<!-- Single-file plugin bootstrap; the file name is the plugin slug. -->
+		<exclude name="WordPress.Files.FileName"/>
+		<!-- The audit log and MCP responses are JSON, not HTML. -->
+		<exclude name="WordPress.Security.EscapeOutput"/>
+		<!-- No nonces: authentication is the MCP transport's application password. -->
+		<exclude name="WordPress.Security.NonceVerification"/>
+		<!-- WP-CLI is the documented shell-level feature. -->
+		<exclude name="WordPress.PHP.DiscouragedPHPFunctions.system_calls_exec"/>
+		<!-- Best-effort file operations on paths that were already validated. -->
+		<exclude name="WordPress.PHP.NoSilencedErrors"/>
+		<!-- Static queries only; table names come from $wpdb. -->
+		<exclude name="WordPress.DB.PreparedSQL"/>
+	</rule>
+
+	<rule ref="WordPress.NamingConventions.PrefixAllGlobals">
+		<properties>
+			<property name="prefixes" type="array">
+				<element value="wpmcp"/>
+				<element value="WPMCP"/>
+			</property>
+		</properties>
+	</rule>
+
+	<rule ref="WordPress.WP.I18n">
+		<properties>
+			<property name="text_domain" type="array">
+				<element value="wp-mcp-abilities"/>
+			</property>
+		</properties>
+	</rule>
+
+	<rule ref="PHPCompatibilityWP"/>
+</ruleset>

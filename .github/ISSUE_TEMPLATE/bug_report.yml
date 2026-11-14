@@ -1,0 +1,77 @@
+name: Bug report
+description: Something in the plugin does not behave as documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Do not report security issues here.** Use the repository's Security tab
+        (private vulnerability reporting) instead.
+
+  - type: input
+    id: wp-version
+    attributes:
+      label: WordPress version
+      placeholder: '6.9.1'
+    validations:
+      required: true
+
+  - type: input
+    id: php-version
+    attributes:
+      label: PHP version
+      placeholder: '8.2.35'
+    validations:
+      required: true
+
+  - type: input
+    id: plugin-version
+    attributes:
+      label: WP MCP Abilities version
+      placeholder: '2.4.0'
+    validations:
+      required: true
+
+  - type: input
+    id: adapter-version
+    attributes:
+      label: mcp-adapter version
+      placeholder: '0.7.1'
+
+  - type: input
+    id: client
+    attributes:
+      label: MCP client
+      placeholder: 'OpenCode, Claude Desktop, Cursor, custom SDK…'
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Include the exact ability name and arguments.
+      placeholder: |
+        1. Call wpmcp-elementor with action=get-structure
+        2. …
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      description: Paste the error payload. Remove credentials, tokens and personal data.
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Relevant plugins, theme, cache layer, hosting quirks, audit log excerpt.
